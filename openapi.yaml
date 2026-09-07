@@ -32,8 +32,8 @@ servers:
     description: Local development
 
 tags:
-  - name: Things
-    description: TODO — rename to your primary resource.
+  - name: Rooms
+    description: Library study rooms.
 
 paths:
 
@@ -42,7 +42,37 @@ paths:
   # Rule 2: removing a query parameter must give you MORE results of the
   # same kind, never a DIFFERENT kind of thing.
   # -------------------------------------------------------------------
-  
+  /rooms/{roomId}:
+    get:
+      operationId: getRoom
+      summary: Get a library study room
+      tags: [Rooms]
+      description: |
+        Returns one library study room.
+
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          description: Unique identifier of the room.
+          schema:
+            type: string
+            pattern: '^room_[A-Za-z0-9]{3,}$'
+          example: room_7Kq
+
+      responses:
+        '200':
+          description: The requested room.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rooms'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '404':
+          $ref: '#/components/responses/NotFound'
   /rooms:
     get:
       operationId: listRooms
@@ -126,90 +156,10 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
-  /things/{thingId}:
-    parameters:
-      - name: thingId
-        in: path
-        required: true
-        description: Opaque, server-generated. Never a database integer.
-        schema:
-          type: string
-          pattern: '^thg_[A-Za-z0-9]{3,}$'
-        example: thg_51Fa93cD
-    get:
-      operationId: getThing
-      summary: Fetch one thing
-      tags: [Things]
-      responses:
-        '200':
-          description: The thing.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Rooms' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
   # -------------------------------------------------------------------
   # Rule 5 — a state transition is a sub-resource, and its URI is a
   # NOUN. Not /markRetired, not PATCH {"status":"retired"}.
-  # -------------------------------------------------------------------
-  /things/{thingId}/retirement:
-    parameters:
-      - name: thingId
-        in: path
-        required: true
-        schema: { type: string }
-        example: thg_51Fa93cD
-    post:
-      operationId: retireThing
-      summary: Retire a thing
-      tags: [Things]
-      description: |
-        TODO: your own transition. Note that the transition carries a
-        body of its own (the reason), a response of its own (who and
-        when), and can be read back later with GET — none of which a
-        verb in the URI would give you.
-
-        Re-sending this when the thing is ALREADY retired returns 200
-        with the existing record, not 409. The requested end state
-        already holds and the caller's intent has been satisfied.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [reason]
-              properties:
-                reason:
-                  type: string
-                  example: Replaced by a newer revision
-      responses:
-        '200':
-          description: Already retired. The existing record is returned.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Retirement' }
-        '201':
-          description: Retired.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Retirement' }
-        '409':
-          description: |
-            The transition is not permitted from the current status.
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
-              example:
-                type: https://api.example.com/problems/illegal-transition
-                title: That status change is not permitted
-                status: 409
-                detail: thg_51Fa93cD is draft; retirement is refused.
-                instance: /v1/things/thg_51Fa93cD/retirement
-                from: draft
-                to: retired
-                allowedFrom: [active]
-
+  # ------------------------------------------------------------------
 components:
 
   schemas:

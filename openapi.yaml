@@ -1,0 +1,402 @@
+# =====================================================================
+#  STARTER SKELETON — Meeting 2, Lab L2
+#
+#  This file lints clean as it stands. That is its only purpose: to
+#  prove your toolchain works before you have anything to lose.
+#
+#  Every line marked TODO is yours to replace with YOUR TEAM'S DOMAIN.
+#  Do not submit a file that still says "Thing". A specification that
+#  still contains this skeleton's nouns has not been done.
+#
+#  Work through 02-lab-L2-at-home.md alongside this file.
+# =====================================================================
+
+openapi: 3.1.0
+
+info:
+
+  title: RoomReservation API
+  version: 0.1.0
+  description: |
+    Used by students to reserve rooms in the library
+    All money amounts are whole numbers in the smallest unit
+    of the currency. All timestamps are RFC 3339 with a
+    timezone offset. Clients MUST ignore response fields they
+    do not recognise, and MUST NOT crash when they see a
+    status value they do not know
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production - does not exist yet. That is Meeting 3.
+  - url: http://localhost:8080/v1
+    description: Local development
+
+tags:
+  - name: Things
+    description: TODO — rename to your primary resource.
+
+paths:
+
+  # -------------------------------------------------------------------
+  # A collection GET with a filter parameter. Required for L2.
+  # Rule 2: removing a query parameter must give you MORE results of the
+  # same kind, never a DIFFERENT kind of thing.
+  # -------------------------------------------------------------------
+  
+  /rooms:
+    get:
+      operationId: listRooms
+      summary: List rooms
+      tags: [Rooms]
+      description: |
+        Returns a paginated list of library study rooms available for reservation.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter rooms by availability status.
+          schema:
+            type: string
+            enum: [available, reserved, maintenance]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of items to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor from a previous page's nextCursor.
+          schema: { type: string }
+      responses:
+        '200':
+          description: A page of rooms.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Rooms' }
+                  nextCursor:
+                    type: string
+                    description: Absent on the last page.
+                    example: eyJvIjoyMH0
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+    # -----------------------------------------------------------------
+    # The unsafe, consequential operation. Required for L2.
+    # The idempotency key is declared REQUIRED, so it is impossible to
+    # read this document and not know about it.
+    # -----------------------------------------------------------------
+  /reservations:
+    post:
+      operationId: createReservation
+      summary: Reserve a library room
+      tags: [Reservations]
+      description: Creates a new room reservation.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, format: uuid }
+          description: |
+            Created by the client when the user confirms the reservation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Reservation' }
+      responses:
+        '201':
+          description: Reservation created.
+          headers:
+            Location:
+              schema: { type: string }
+              description: URI of the created reservation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /things/{thingId}:
+    parameters:
+      - name: thingId
+        in: path
+        required: true
+        description: Opaque, server-generated. Never a database integer.
+        schema:
+          type: string
+          pattern: '^thg_[A-Za-z0-9]{3,}$'
+        example: thg_51Fa93cD
+    get:
+      operationId: getThing
+      summary: Fetch one thing
+      tags: [Things]
+      responses:
+        '200':
+          description: The thing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rooms' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # -------------------------------------------------------------------
+  # Rule 5 — a state transition is a sub-resource, and its URI is a
+  # NOUN. Not /markRetired, not PATCH {"status":"retired"}.
+  # -------------------------------------------------------------------
+  /things/{thingId}/retirement:
+    parameters:
+      - name: thingId
+        in: path
+        required: true
+        schema: { type: string }
+        example: thg_51Fa93cD
+    post:
+      operationId: retireThing
+      summary: Retire a thing
+      tags: [Things]
+      description: |
+        TODO: your own transition. Note that the transition carries a
+        body of its own (the reason), a response of its own (who and
+        when), and can be read back later with GET — none of which a
+        verb in the URI would give you.
+
+        Re-sending this when the thing is ALREADY retired returns 200
+        with the existing record, not 409. The requested end state
+        already holds and the caller's intent has been satisfied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  example: Replaced by a newer revision
+      responses:
+        '200':
+          description: Already retired. The existing record is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Retirement' }
+        '201':
+          description: Retired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Retirement' }
+        '409':
+          description: |
+            The transition is not permitted from the current status.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://api.example.com/problems/illegal-transition
+                title: That status change is not permitted
+                status: 409
+                detail: thg_51Fa93cD is draft; retirement is refused.
+                instance: /v1/things/thg_51Fa93cD/retirement
+                from: draft
+                to: retired
+                allowedFrom: [active]
+
+components:
+
+  schemas:
+
+    # ---------------------------------------------------------------
+    # TODO: replace with your resources from Worksheet W1. You need at
+    # least THREE, each with a required array and an example on EVERY
+    # property. A blank example is what the Meeting 7 partner team
+    # will complain about.
+    # ---------------------------------------------------------------
+    Rooms:
+      type: object
+      required: [id, roomNumber, capacity, location, isAvailable]
+      properties:
+        id:
+          type: string
+          pattern: '^room_[A-Za-z0-9]{3,}$'
+          example: room_7Kq
+
+        roomNumber:
+          type: string
+          example: "B204"
+
+        capacity:
+          type: integer
+          example: 6
+
+        location:
+          type: string
+          example: "2nd Floor"
+
+        isAvailable:
+          type: boolean
+          description: |
+            True when the room is currently available for students to reserve.
+          example: true
+
+    Reservation:
+      type: object
+      required: [id, roomId, studentId, status, startTime, endTime, createdAt]
+      properties:
+        id:
+          type: string
+          pattern: '^res_[A-Za-z0-9]{3,}$'
+          description: Opaque, server-generated unique identifier for the reservation.
+          example: res_8Fk2p
+        roomId:
+          type: string
+          pattern: '^room_[A-Za-z0-9]{3,}$'
+          description: Unique identifier of the reserved room.
+          example: room_7Kq
+        studentId:
+          type: string
+          description: Student ID of the student who made the reservation.
+          example: s1234567
+        status:
+          type: string
+          enum: [confirmed, active, completed, cancelled, no_show]
+          description: |
+            Current state of the reservation. Clients MUST treat an unrecognised 
+            value as 'in progress' and MUST NOT crash on it.
+          example: confirmed
+        startTime:
+          type: string
+          format: date-time
+          description: Start timestamp in RFC 3339 format with timezone offset.
+          example: '2026-09-01T10:00:00+07:00'
+        endTime:
+          type: string
+          format: date-time
+          description: End timestamp in RFC 3339 format with timezone offset.
+          example: '2026-09-01T12:00:00+07:00'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the reservation was created.
+          example: '2026-08-31T14:30:00+07:00'
+
+    Retirement:
+      type: object
+      required: [thingId, reason, retiredAt]
+      properties:
+        thingId:
+          type: string
+          example: thg_51Fa93cD
+        reason:
+          type: string
+          example: Replaced by a newer revision
+        retiredAt:
+          type: string
+          format: date-time
+          example: '2026-03-04T12:14:00+07:00'
+
+    # ---------------------------------------------------------------
+    # RFC 9457 Problem Details. Defined ONCE, referenced everywhere,
+    # so that a client able to parse one of your errors can parse all
+    # of them. Extension members go alongside these five.
+    # ---------------------------------------------------------------
+    Problem:
+      type: object
+      required: [type, title, status]
+      # RFC 9457 permits EXTENSION MEMBERS: your own fields alongside the
+      # five below. They are what turns a merely correct error into an
+      # interface a client can build a good experience on, and they are
+      # explicitly assessed in A1 — so the schema must allow them.
+      # Remove this line and your own extension members become lint
+      # errors, which is exactly how a team ends up with useless errors.
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          format: uri
+          description: |
+            Stable URI identifying the KIND of problem. Client code
+            branches on this exact string, so it must never change
+            once published.
+          example: https://api.example.com/problems/outlet-closed
+        title:
+          type: string
+          description: |
+            Short, human-readable, FIXED for a given type. Written for
+            a developer reading a log, not for an end user.
+          example: Outlet is closed
+        status:
+          type: integer
+          description: |
+            The HTTP status, repeated so the document stays
+            meaningful when logged away from its response.
+          example: 409
+        detail:
+          type: string
+          description: |
+            Specific to this occurrence. Never a stack trace, an SQL
+            fragment, or an internal hostname.
+          example: The selected room or outlet is currently closed for maintenance.
+        instance:
+          type: string
+          description: |
+            The URI of this specific occurrence.
+          example: /v1/rooms/room_7Kq/reservations
+
+  responses:
+
+    BadRequest:
+      description: The request was malformed.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/malformed-request
+            title: The request could not be parsed
+            status: 400
+            detail: The JSON body contained invalid syntax or types.
+            instance: /v1/rooms
+
+    NotFound:
+      description: No such resource — or none you may see.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/not-found
+            title: Resource not found
+            status: 404
+            detail: The requested room identifier does not exist.
+            instance: /v1/rooms/room_999
+
+    Conflict:
+      description: The request was valid but refused by a business rule.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/outlet-closed
+            title: Outlet is closed
+            status: 409
+            detail: The selected room is closed for maintenance.
+            instance: /v1/rooms/room_7Kq
+
+    UnprocessableEntity:
+      description: Well-formed but semantically invalid.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://api.example.com/problems/validation-failed
+            title: One or more fields are invalid
+            status: 422
+            detail: The requested room capacity exceeds structural limits.
+            instance: /v1/rooms

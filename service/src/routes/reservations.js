@@ -8,7 +8,7 @@ const {
 const { findRoom } = require("../store/rooms");
 const { findReservationConflict, createReservation } = require("../store/reservations");
 const { toReservation } = require("../representations/reservations");
-const { problem } = require("../problem");
+const { sendProblem } = require("../problem");
 
 function createReservationRouter(db) {
   const router = express.Router();

@@ -1,8 +1,8 @@
 const express = require("express");
-const { validateRoomQuery } = require("../schemas/rooms");
-const { listRooms } = require("../store/rooms");
+const { validateRoomId, validateRoomQuery } = require("../schemas/rooms");
+const { listRooms, findRoom } = require("../store/rooms");
 const { toRoom } = require("../representations/rooms");
-const { problem } = require("../problem");
+const { sendProblem } = require("../problem");
 
 function createRoomRouter(db) {
   const router = express.Router();
@@ -10,13 +10,13 @@ function createRoomRouter(db) {
   router.get("/", async (req, res, next) => {
     const errors = validateRoomQuery(req.query);
     if (errors.length) {
-      return res.status(400).json(problem(
-        "https://api.example.com/problems/malformed-request",
-        "The request could not be parsed",
-        400,
-        errors.join("; "),
-        req.originalUrl
-      ));
+            return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: errors.join("; "),
+        instance: req.originalUrl
+      });
     }
 
     try {

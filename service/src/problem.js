@@ -1,11 +1,15 @@
-function problem(type, title, status, detail, instance) {
-  return {
-    type,
-    title,
-    status,
-    ...(detail ? { detail } : {}),
-    ...(instance ? { instance } : {})
-  };
+function sendProblem(res, { status, type, title, detail, instance, ...extensions }) {
+  res
+    .status(status)
+    .type("application/problem+json")
+    .json({
+      type,
+      title,
+      status,
+      ...(detail !== undefined ? { detail } : {}),
+      ...(instance !== undefined ? { instance } : {}),
+      ...extensions
+    });
 }
 
 module.exports = { problem };

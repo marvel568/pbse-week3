@@ -20,6 +20,12 @@ function createApp(db) {
 
   app.use(express.json());
 
+  app.get("/health", (_req, res) => {
+    res.status(200).json({
+      status: "ok"
+    });
+  });
+
   app.use("/v1/rooms", createRoomRouter(db));
   app.use("/v1/reservations", createReservationRouter(db));
 

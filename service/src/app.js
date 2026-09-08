@@ -4,6 +4,7 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 const { createRoomRouter } = require("./routes/rooms");
 const { createReservationRouter } = require("./routes/reservations");
+const { sendProblem } = require("./problem");
 
 function requiredConfig() {
   const required = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER"];
@@ -26,14 +27,14 @@ function createApp(db) {
     console.error(err);
     if (res.headersSent) return next(err);
 
-    res.status(500).json({
-      type: "https://api.example.com/problems/internal-error",
-      title: "Internal server error",
-      status: 500,
-      detail: "An unexpected error occurred.",
-      instance: req.originalUrl
-    });
-  });
+    sendProblem(res, {
+       status: 500,
+       type: "https://api.example.com/problems/internal-error",
+       title: "Internal server error",
+       detail: "An unexpected error occurred.",
+       instance: req.originalUrl
+     });
+   });
 
   return app;
 }

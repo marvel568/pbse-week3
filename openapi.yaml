@@ -16,7 +16,7 @@ openapi: 3.1.0
 info:
 
   title: RoomReservation API
-  version: 0.2.0
+  version: 0.2.1
   description: |
     Used by students to reserve rooms in the library
     All money amounts are whole numbers in the smallest unit
@@ -353,7 +353,7 @@ components:
             instance: /v1/rooms/room_999
 
     Conflict:
-      description: The request was valid but refused by a business rule.
+      description: The request was valid but refused by a business rule, including idempotency-key reuse with a different request body.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }

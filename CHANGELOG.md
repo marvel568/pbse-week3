@@ -2,6 +2,18 @@
 
 All notable changes to `openapi.yaml` are recorded here
 
+## 0.2.1 — Session 3 (Part A)
+
+### Changed
+- Clarified that a `409` response from `POST /v1/reservations` includes
+  `https://api.example.com/problems/idempotency-key-reuse` when a client
+  sends a different request body with an already-used `Idempotency-Key`.
+
+### Why this is a contract clarification
+The Session 2 idempotency rules require a distinct `409` outcome for key
+reuse with a different body. A.8 implements that outcome server-side, so the
+shared conflict response documentation now names it explicitly.
+
 ## 0.2.0 — Session 3 (Part A)
 
 ### Changed

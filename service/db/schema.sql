@@ -27,3 +27,12 @@ CREATE INDEX idx_reservations_room_time
 
 CREATE INDEX idx_reservations_student
     ON reservations(student_id);
+
+CREATE TABLE idempotency_keys (
+    idempotency_key CHAR(36) PRIMARY KEY,
+    request_hash CHAR(64) NOT NULL,
+    response_status SMALLINT NULL,
+    response_body LONGTEXT NULL,
+    location VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

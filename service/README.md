@@ -8,7 +8,7 @@ Implementation of the contract in `../openapi.yaml`.
 |---|---|---|
 | `GET /v1/rooms/{roomId}` | service | — |
 | `GET /v1/rooms` | service | `cursor` pagination not yet implemented (only `status` and `limit` are honoured) |
-| `POST /v1/reservations` | service | Idempotency-key replay/dedup storage not yet implemented (A.8) — the header is validated and required, but a repeated key with the same body is not yet detected and short-circuited |
+| `POST /v1/reservations` | service | — |
 
 ## Failure catalogue (A.6.2)
 
@@ -27,6 +27,7 @@ Every row below is produced by `sendProblem()` in `src/problem.js`, and every
 | `roomId` well-formed but doesn't reference an existing room (create) | 422 | `https://api.example.com/problems/validation-failed` |
 | Room exists but `isAvailable = false` | 409 | `https://api.example.com/problems/outlet-closed` |
 | Overlapping active/confirmed reservation on the room | 409 | `https://api.example.com/problems/reservation-conflict` |
+| Idempotency key reused with a different request body | 409 | `https://api.example.com/problems/idempotency-key-reuse` |
 | Uncaught exception anywhere in the app | 500 | `https://api.example.com/problems/internal-error` |
 
 ## Running locally

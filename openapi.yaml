@@ -16,7 +16,7 @@ openapi: 3.1.0
 info:
 
   title: RoomReservation API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Used by students to reserve rooms in the library
     All money amounts are whole numbers in the smallest unit
@@ -142,7 +142,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Reservation' }
+            schema: { $ref: '#/components/schemas/NewReservation' }
       responses:
         '201':
           description: Reservation created.
@@ -153,6 +153,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Reservation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
@@ -237,6 +238,30 @@ components:
           format: date-time
           description: Timestamp when the reservation was created.
           example: '2026-08-31T14:30:00+07:00'
+
+     NewReservation:
+      type: object
+      required: [roomId, studentId, startTime, endTime]
+      properties:
+        roomId:
+          type: string
+          pattern: '^room_[A-Za-z0-9]{3,}$'
+          description: Unique identifier of the room being reserved.
+          example: room_7Kq
+        studentId:
+          type: string
+          description: Student ID of the student making the reservation.
+          example: s1234567
+        startTime:
+          type: string
+          format: date-time
+          description: Start timestamp in RFC 3339 format with timezone offset.
+          example: '2026-09-01T10:00:00+07:00'
+        endTime:
+          type: string
+          format: date-time
+          description: End timestamp in RFC 3339 format with timezone offset.
+          example: '2026-09-01T12:00:00+07:00'
 
     Retirement:
       type: object

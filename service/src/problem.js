@@ -12,4 +12,4 @@ function sendProblem(res, { status, type, title, detail, instance, ...extensions
     });
 }
 
-module.exports = { problem };
+module.exports = { sendProblem };

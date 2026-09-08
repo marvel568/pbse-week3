@@ -34,6 +34,36 @@ function createRoomRouter(db) {
     }
   });
 
+   router.get("/:roomId", async (req, res, next) => {
+    if (!validateRoomId(req.params.roomId)) {
+      return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: "roomId must match the room identifier format.",
+        instance: req.originalUrl
+      });
+    }
+
+    try {
+      const room = await findRoom(db, req.params.roomId);
+
+      if (!room) {
+        return sendProblem(res, {
+          status: 404,
+          type: "https://api.example.com/problems/not-found",
+          title: "Resource not found",
+          detail: "The requested room identifier does not exist.",
+          instance: req.originalUrl
+        });
+      }
+
+      res.status(200).json(toRoom(room));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
 

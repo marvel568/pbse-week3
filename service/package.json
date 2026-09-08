@@ -5,7 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "test:contract": "echo \"contract test runner goes here (A.9)\" && exit 1"
+    "test:contract": "node tests/contract/run.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

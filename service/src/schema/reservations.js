@@ -1,41 +1,48 @@
-const reservationIdPattern = /^res_[A-Za-z0-9]{3,}$/;
+const uuidPattern = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const roomIdPattern = /^room_[A-Za-z0-9]{3,}$/;
 
-function validateReservation(body) {
+function validateIdempotencyKey(key) {
+  if (!key) return "Idempotency-Key header is required";
+  if (!uuidPattern.test(key)) return "Idempotency-Key must be a UUID";
+  return null;
+}
+
+function structuralErrors(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return ["request body must be a JSON object"];
+  }
+
   const errors = [];
 
-  if (!body || typeof body !== "object") {
-    return ["request body must be an object"];
-  }
-
-  if (body.id !== undefined &&
-      (typeof body.id !== "string" || !reservationIdPattern.test(body.id))) {
-    errors.push("id must match the reservation identifier format");
-  }
-
   if (typeof body.roomId !== "string" || !roomIdPattern.test(body.roomId)) {
-    errors.push("roomId is required and must be a valid room identifier");
+    errors.push("roomId is required and must match the room identifier format");
   }
 
-  if (typeof body.studentId !== "string" || body.studentId.length === 0) {
-    errors.push("studentId is required");
+  if (typeof body.studentId !== "string" || body.studentId.trim().length === 0) {
+    errors.push("studentId is required and must be a non-empty string");
   }
 
-  if (typeof body.status !== "string" ||
-      !["confirmed", "active", "completed", "cancelled", "no_show"].includes(body.status)) {
-    errors.push("status is invalid");
+  if (typeof body.startTime !== "string" || Number.isNaN(new Date(body.startTime).getTime())) {
+    errors.push("startTime is required and must be an RFC 3339 date-time");
   }
 
+  if (typeof body.endTime !== "string" || Number.isNaN(new Date(body.endTime).getTime())) {
+    errors.push("endTime is required and must be an RFC 3339 date-time");
+  }
+
+  return errors;
+}
+
+function semanticErrors(body) {
+  const errors = [];
   const start = new Date(body.startTime);
   const end = new Date(body.endTime);
 
-  if (Number.isNaN(start.getTime())) errors.push("startTime must be a valid date-time");
-  if (Number.isNaN(end.getTime())) errors.push("endTime must be a valid date-time");
-  if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end <= start) {
+  if (end <= start) {
     errors.push("endTime must be after startTime");
   }
 
   return errors;
 }
 
-module.exports = { validateReservation };
+module.exports = { validateIdempotencyKey, structuralErrors, semanticErrors };

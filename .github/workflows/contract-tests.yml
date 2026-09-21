@@ -43,6 +43,11 @@ jobs:
           mysql --host=127.0.0.1 --port=3306 --user=root room_reservation < db/schema.sql
           mysql --host=127.0.0.1 --port=3306 --user=root room_reservation < db/seed.sql
 
+      - name: Debug - show rooms table contents
+        run: |
+          mysql --host=127.0.0.1 --port=3306 --user=root room_reservation \
+            -e "SELECT id, room_status FROM rooms;"
+
       - name: Start service
         working-directory: service
         env:
@@ -65,6 +70,10 @@ jobs:
           done
           cat service.log
           exit 1
+
+      - name: Debug - check room via running API
+        run: |
+          curl -s http://127.0.0.1:8080/v1/rooms/room_A12
 
       - name: Run contract tests
         working-directory: service

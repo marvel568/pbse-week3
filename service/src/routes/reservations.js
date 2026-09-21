@@ -191,8 +191,8 @@ function createReservationRouter(db) {
 
       const row = await createReservation(connection, reservation);
       const body = toReservation(row);
-      const location = `/reservations/${row.id}`;
-      // const location = `/v1/reservations/${row.id}`;
+      // const location = `/reservations/${row.id}`;
+      const location = `/v1/reservations/${row.id}`;
 
       await saveIdempotencyResponse(connection, idempotencyKey, {
         status: 201,

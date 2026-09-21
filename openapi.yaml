@@ -16,7 +16,7 @@ openapi: 3.1.0
 info:
 
   title: RoomReservation API
-  version: 0.2.2
+  version: 0.3.1
   description: |
     Used by students to reserve rooms in the library
     All money amounts are whole numbers in the smallest unit
@@ -218,11 +218,18 @@ components:
           type: string
           example: "2nd Floor"
 
-        isAvailable:
-          type: boolean
+        room_status:
+          type: string
+          enum: [available, maintenance, reserved]
           description: |
-            True when the room is currently available for students to reserve.
-          example: true
+            Status descriptors
+          example: available
+          
+        # isAvailable:
+        #   type: boolean
+        #   description: |
+        #     True when the room is currently available for students to reserve.
+        #   example: true
 
     Reservation:
       type: object

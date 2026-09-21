@@ -5,7 +5,9 @@ const BASE_URL = process.env.BASE_URL || "http://localhost:8080";
 const API = `${BASE_URL}/v1`;
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API}${path}`, {
+  const url = path.startsWith("/v1/") ? path.replace(/^\/v1/, "") : path;
+  //const response = await fetch(`${API}${path}`, {
+  const response = await fetch(`${API}${url}`, {
     ...options,
     headers: {
       Accept: "application/json, application/problem+json",
@@ -135,7 +137,8 @@ async function testInvalidLimit() {
 }
 
 async function testRoomNotFound() {
-  const result = await request("/rooms/room_DOES_NOT_EXIST");
+  //const result = await request("/rooms/room_DOES_NOT_EXIST");
+  const result = await request("/rooms/room_9999999notreal");
 
   assertProblem(result, 404);
 

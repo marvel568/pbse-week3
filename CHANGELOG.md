@@ -2,7 +2,12 @@
 
 All notable changes to `openapi.yaml` are recorded here
 
-## 0.2.2
+## 0.3.1
+
+### Changed
+Updated "Rooms" schema. Changed "isAvailable" to "room_status" an enum containing "available", "maintenance", "reserved"
+
+## 0.3.0
 
 ### Added
 - `GET /v1/reservations/{reservationId}` returns the full `Reservation`

@@ -3,5 +3,5 @@ Study Room Library
 
 Operational status
 operation-service-status
-GET/V1/ROOMS-service-not yet implimented
+GET/V1/ROOMS-service-
 POST/V1/RESERATION-service-

@@ -16,7 +16,7 @@ openapi: 3.1.0
 info:
 
   title: RoomReservation API
-  version: 0.2.1
+  version: 0.2.2
   description: |
     Used by students to reserve rooms in the library
     All money amounts are whole numbers in the smallest unit
@@ -34,6 +34,8 @@ servers:
 tags:
   - name: Rooms
     description: Library study rooms.
+  - name: Reservations
+    description: Library room reservations.
 
 paths:
 
@@ -157,6 +159,30 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
+  /reservations/{reservationId}:
+    get:
+      operationId: getReservation
+      summary: Get a room reservation
+      tags: [Reservations]
+      description: Returns one room reservation.
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: Unique identifier of the reservation.
+          schema:
+            type: string
+            pattern: '^res_[A-Za-z0-9]{3,}$'
+          example: res_8Fk2p
+      responses:
+        '200':
+          description: The requested reservation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # -------------------------------------------------------------------
   # Rule 5 — a state transition is a sub-resource, and its URI is a
   # NOUN. Not /markRetired, not PATCH {"status":"retired"}.
@@ -166,7 +192,7 @@ components:
   schemas:
 
     # ---------------------------------------------------------------
-    # TODO: replace with your resources from Worksheet W1. You need at
+    # DONE: replace with your resources from Worksheet W1. You need at
     # least THREE, each with a required array and an example on EVERY
     # property. A blank example is what the Meeting 7 partner team
     # will complain about.
@@ -239,7 +265,7 @@ components:
           description: Timestamp when the reservation was created.
           example: '2026-08-31T14:30:00+07:00'
 
-     NewReservation:
+    NewReservation:
       type: object
       required: [roomId, studentId, startTime, endTime]
       properties:

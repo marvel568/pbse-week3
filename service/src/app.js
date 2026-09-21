@@ -33,6 +33,16 @@ function createApp(db) {
     console.error(err);
     if (res.headersSent) return next(err);
 
+    if (err.type === "entity.parse.failed" || err.status === 400) {
+      return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: "The JSON body contained invalid syntax.",
+        instance: req.originalUrl
+      });
+    }
+
     sendProblem(res, {
        status: 500,
        type: "https://api.example.com/problems/internal-error",

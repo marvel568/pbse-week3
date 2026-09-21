@@ -7,8 +7,9 @@ Implementation of the contract in `../openapi.yaml`.
 | Operation | Served by | Remaining work |
 |---|---|---|
 | `GET /v1/rooms/{roomId}` | service | — |
-| `GET /v1/rooms` | service | `cursor` pagination not yet implemented (only `status` and `limit` are honoured) |
+| `GET /v1/rooms` | service | — |
 | `POST /v1/reservations` | service | — |
+| `GET /v1/reservations/{reservationId}` | service | — |
 
 ## Failure catalogue (A.6.2)
 
@@ -22,7 +23,10 @@ Every row below is produced by `sendProblem()` in `src/problem.js`, and every
 | `status`/`limit`/`cursor` query parameter invalid | 400 | `https://api.example.com/problems/malformed-request` |
 | `Idempotency-Key` header missing or not a UUID | 400 | `https://api.example.com/problems/malformed-request` |
 | Reservation body missing/mistyped fields | 400 | `https://api.example.com/problems/malformed-request` |
+| Malformed JSON request body | 400 | `https://api.example.com/problems/malformed-request` |
+| `reservationId` path parameter doesn't match the id pattern | 400 | `https://api.example.com/problems/malformed-request` |
 | Room identifier not found (`GET /rooms/{roomId}`) | 404 | `https://api.example.com/problems/not-found` |
+| Reservation identifier not found (`GET /reservations/{reservationId}`) | 404 | `https://api.example.com/problems/not-found` |
 | `endTime` not after `startTime` | 422 | `https://api.example.com/problems/validation-failed` |
 | `roomId` well-formed but doesn't reference an existing room (create) | 422 | `https://api.example.com/problems/validation-failed` |
 | Room exists but `isAvailable = false` | 409 | `https://api.example.com/problems/outlet-closed` |
@@ -39,6 +43,13 @@ mysql < db/schema.sql
 mysql < db/seed.sql
 npm start
 \```
+
+## Continuous integration (A.9)
+
+The GitHub Actions workflow in `../.github/workflows/contract-tests.yml` runs
+on every push and pull request. It starts MySQL, applies the committed schema
+and seed data, starts the service, waits for `/health`, and runs the contract
+test runner.
 
 ## Restart-persistence check (A.7.1)
 

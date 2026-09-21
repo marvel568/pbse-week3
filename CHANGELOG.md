@@ -2,6 +2,18 @@
 
 All notable changes to `openapi.yaml` are recorded here
 
+## 0.2.2
+
+### Added
+- `GET /v1/reservations/{reservationId}` returns the full `Reservation`
+  representation created by `POST /v1/reservations`.
+
+### Why this is a contract addition
+The assignment requires a created entity to be subsequently readable in the
+same representation, including after a service restart. Adding a read-only
+operation is backwards compatible, so the contract receives a minor version
+bump.
+
 ## 0.2.1 — Session 3 (Part A)
 
 ### Changed

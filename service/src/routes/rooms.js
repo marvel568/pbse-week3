@@ -1,5 +1,10 @@
 const express = require("express");
-const { validateRoomId, validateRoomQuery } = require("../schemas/rooms");
+const {
+  validateRoomId,
+  validateRoomQuery,
+  decodeCursor,
+  encodeCursor
+} = require("../schemas/rooms");
 const { listRooms, findRoom } = require("../store/rooms");
 const { toRoom } = require("../representations/rooms");
 const { sendProblem } = require("../problem");
@@ -20,14 +25,19 @@ function createRoomRouter(db) {
     }
 
     try {
+      const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+      const offset = req.query.cursor === undefined ? 0 : decodeCursor(req.query.cursor);
       const rows = await listRooms(db, {
         status: req.query.status,
-        limit: req.query.limit === undefined ? 20 : Number(req.query.limit),
-        cursor: req.query.cursor
+        limit,
+        offset
       });
+      const hasNextPage = rows.length > limit;
+      const items = rows.slice(0, limit).map(toRoom);
 
       res.status(200).json({
-        items: rows.map(toRoom)
+        items,
+        ...(hasNextPage ? { nextCursor: encodeCursor(offset + limit) } : {})
       });
     } catch (err) {
       next(err);

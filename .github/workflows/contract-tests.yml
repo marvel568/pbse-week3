@@ -1,0 +1,102 @@
+name: Contract tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: room_reservation
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: service/package-lock.json
+
+      - name: Install service dependencies
+        working-directory: service
+        run: npm ci
+
+      - name: Apply database schema and seed data
+        working-directory: service
+        run: |
+          mysql --host=127.0.0.1 --port=3306 --user=root room_reservation < db/schema.sql
+          mysql --host=127.0.0.1 --port=3306 --user=root room_reservation < db/seed.sql
+
+      - name: Start service
+        working-directory: service
+        env:
+          PORT: 8080
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: room_reservation
+          DB_USER: root
+          DB_PASSWORD: ""
+        run: npm start > service.log 2>&1 & echo $! > service.pid
+
+      - name: Wait for service readiness
+        working-directory: service
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8080/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat service.log
+          exit 1
+
+      - name: Run contract tests
+        working-directory: service
+        env:
+          BASE_URL: http://127.0.0.1:8080
+          PERSISTENCE_ID_FILE: .persistence-id
+        run: npm run test:contract
+
+      - name: Verify idempotent replay created one row
+        working-directory: service
+        run: |
+          test "$(mysql --host=127.0.0.1 --port=3306 --user=root --skip-column-names \
+            -e "SELECT COUNT(*) FROM room_reservation.reservations")" = "2"
+
+      - name: Verify created reservation survives restart
+        working-directory: service
+        env:
+          PORT: 8080
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: room_reservation
+          DB_USER: root
+          DB_PASSWORD: ""
+        run: |
+          kill "$(cat service.pid)"
+          npm start > service-after-restart.log 2>&1 & echo $! > service.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8080/health; then
+              break
+            fi
+            sleep 1
+          done
+          reservation_id="$(cat .persistence-id)"
+          curl --fail --silent "http://127.0.0.1:8080/v1/reservations/${reservation_id}" | \
+            grep -q "\"id\":\"${reservation_id}\""

@@ -2,11 +2,16 @@ const express = require("express");
 const crypto = require("crypto");
 const {
   validateIdempotencyKey,
+  validateReservationId,
   structuralErrors,
   semanticErrors
 } = require("../schemas/reservations");
 const { findRoom } = require("../store/rooms");
-const { findReservationConflict, createReservation } = require("../store/reservations");
+const {
+  findReservationConflict,
+  createReservation,
+  findReservation
+} = require("../store/reservations");
 const {
   createIdempotencyKey,
   findIdempotencyKeyForUpdate,
@@ -17,6 +22,36 @@ const { sendProblem } = require("../problem");
 
 function createReservationRouter(db) {
   const router = express.Router();
+
+  router.get("/:reservationId", async (req, res, next) => {
+    if (!validateReservationId(req.params.reservationId)) {
+      return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: "reservationId must match the reservation identifier format.",
+        instance: req.originalUrl
+      });
+    }
+
+    try {
+      const reservation = await findReservation(db, req.params.reservationId);
+
+      if (!reservation) {
+        return sendProblem(res, {
+          status: 404,
+          type: "https://api.example.com/problems/not-found",
+          title: "Resource not found",
+          detail: "The requested reservation identifier does not exist.",
+          instance: req.originalUrl
+        });
+      }
+
+      return res.status(200).json(toReservation(reservation));
+    } catch (err) {
+      return next(err);
+    }
+  });
 
   router.post("/", async (req, res, next) => {
     const keyError = validateIdempotencyKey(req.get("Idempotency-Key"));

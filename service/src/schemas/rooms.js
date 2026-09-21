@@ -4,6 +4,32 @@ function validateRoomId(id) {
   return typeof id === "string" && roomIdPattern.test(id);
 }
 
+function decodeCursor(cursor) {
+  if (typeof cursor !== "string" || cursor.length === 0) return null;
+
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    const value = JSON.parse(decoded);
+
+    if (
+      !Number.isSafeInteger(value?.o) ||
+      value.o < 0 ||
+      Object.keys(value).length !== 1 ||
+      encodeCursor(value.o) !== cursor
+    ) {
+      return null;
+    }
+
+    return value.o;
+  } catch {
+    return null;
+  }
+}
+
+function encodeCursor(offset) {
+  return Buffer.from(JSON.stringify({ o: offset })).toString("base64url");
+}
+
 function validateRoomQuery(query) {
   const errors = [];
 
@@ -19,11 +45,16 @@ function validateRoomQuery(query) {
     }
   }
 
-  if (query.cursor !== undefined && typeof query.cursor !== "string") {
-    errors.push("cursor must be a string");
+  if (query.cursor !== undefined && decodeCursor(query.cursor) === null) {
+    errors.push("cursor must be an opaque cursor returned by this API");
   }
 
   return errors;
 }
 
-module.exports = { validateRoomId, validateRoomQuery };
+module.exports = {
+  validateRoomId,
+  validateRoomQuery,
+  decodeCursor,
+  encodeCursor
+};

@@ -38,4 +38,16 @@ async function createReservation(db, reservation) {
   return rows[0];
 }
 
-module.exports = { findReservationConflict, createReservation };
+async function findReservation(db, reservationId) {
+  const [rows] = await db.execute(
+    `SELECT id, room_id AS roomId, student_id AS studentId, status,
+            start_time AS startTime, end_time AS endTime, created_at AS createdAt
+       FROM reservations
+      WHERE id = ?`,
+    [reservationId]
+  );
+
+  return rows[0] || null;
+}
+
+module.exports = { findReservationConflict, createReservation, findReservation };

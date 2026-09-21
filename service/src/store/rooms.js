@@ -1,4 +1,4 @@
-async function listRooms(db, { status, limit = 20 }) {
+async function listRooms(db, { status, limit = 20, offset = 0 }) {
   const values = [];
   let sql = `
     SELECT
@@ -6,17 +6,17 @@ async function listRooms(db, { status, limit = 20 }) {
       room_number AS roomNumber,
       capacity,
       location,
-      is_available AS isAvailable
+      room_status = 'available' AS isAvailable
     FROM rooms
   `;
 
   if (status !== undefined) {
-    sql += " WHERE is_available = ?";
-    values.push(status === "available");
+    sql += " WHERE room_status = ?";
+    values.push(status);
   }
 
-  sql += " ORDER BY room_number LIMIT ?";
-  values.push(Number(limit));
+  sql += " ORDER BY room_number LIMIT ? OFFSET ?";
+  values.push(Number(limit) + 1, Number(offset));
 
   const [rows] = await db.execute(sql, values);
   return rows;
@@ -25,7 +25,7 @@ async function listRooms(db, { status, limit = 20 }) {
 async function findRoom(db, roomId) {
   const [rows] = await db.execute(
     `SELECT id, room_number AS roomNumber, capacity, location,
-            is_available AS isAvailable
+            room_status = 'available' AS isAvailable
        FROM rooms
       WHERE id = ?`,
     [roomId]

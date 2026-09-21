@@ -3,7 +3,9 @@ CREATE TABLE rooms (
     room_number VARCHAR(20) NOT NULL UNIQUE,
     capacity INT NOT NULL,
     location VARCHAR(100) NOT NULL,
-    is_available BOOLEAN NOT NULL DEFAULT TRUE
+    room_status VARCHAR(20) NOT NULL DEFAULT 'available',
+    CONSTRAINT chk_room_status
+        CHECK (room_status IN ('available', 'reserved', 'maintenance'))
 );
 
 CREATE TABLE reservations (

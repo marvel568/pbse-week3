@@ -1,3 +1,8 @@
+function toMysqlDateTime(isoString) {
+  const date = new Date(isoString);
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
 async function findReservationConflict(db, roomId, startTime, endTime) {
   const [rows] = await db.execute(
     `SELECT id
@@ -7,7 +12,7 @@ async function findReservationConflict(db, roomId, startTime, endTime) {
         AND start_time < ?
         AND end_time > ?
       LIMIT 1`,
-    [roomId, endTime, startTime]
+    [roomId, toMysqlDateTime(endTime), toMysqlDateTime(startTime)]
   );
   return rows[0] || null;
 }
@@ -22,8 +27,8 @@ async function createReservation(db, reservation) {
       reservation.roomId,
       reservation.studentId,
       reservation.status,
-      reservation.startTime,
-      reservation.endTime
+      toMysqlDateTime(reservation.startTime),
+      toMysqlDateTime(reservation.endTime)
     ]
   );
 

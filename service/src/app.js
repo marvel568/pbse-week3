@@ -21,6 +21,13 @@ function createApp(db) {
 
   app.use(express.json());
 
+  // healthpoint
+  app.get("/health", (_req, res) => {
+    res.status(200).json({
+      status: "ok"
+    });
+  });
+
   app.use("/v1/rooms", createRoomRouter(db));
   app.use("/v1/reservations", createReservationRouter(db));
 
@@ -29,6 +36,16 @@ function createApp(db) {
 
     if (res.headersSent) {
       return next(err);
+    }
+
+    if (err.type === "entity.parse.failed" || err.status === 400) {
+      return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: "The JSON body contained invalid syntax.",
+        instance: req.originalUrl
+      });
     }
 
     sendProblem(res, {
@@ -53,10 +70,9 @@ const db = mysql.createPool({
   password: process.env.DB_PASSWORD,
   waitForConnections: true,
   connectionLimit: 10,
-  ssl: {
-    ca: process.env.DB_SSL_CA,
-    rejectUnauthorized: true
-  }
+  ssl: process.env.DB_SSL_CA_PATH
+    ? { ca: fs.readFileSync(process.env.DB_SSL_CA_PATH), rejectUnauthorized: true }
+    : undefined
 });
 
 const app = createApp(db);

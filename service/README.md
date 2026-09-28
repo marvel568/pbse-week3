@@ -16,6 +16,29 @@ Example endpoint: https://pbse-week3-vercel.vercel.app/v1/rooms
 | `GET /v1/reservations` | service | — |
 | `PUT /v1/rooms/{roomId}/status` | service | Updates room status and deletes reservations when unavailable. |
 
+## Scopes 
+
+| Scope | Permits | Student | Admin |
+|---|---|---|---|
+| `rooms:read` | Browse rooms and their status | yes | yes |
+| `rooms:manage` | Change a room's operational status | — | yes |
+| `reservations:read` | Read reservations visible to the caller | yes | yes |
+| `reservations:write` | Create a reservation for yourself | yes | — |
+| `reservations:manage` | Oversee every student's reservations | — | yes |
+
+"yes" means that actor may request the scope. Which reservations a caller may
+actually see is decided by the object check (Step 8), not by the scope alone.
+
+| Operation | Required scope |
+|---|---|
+| `GET /v1/rooms` | `rooms:read` |
+| `GET /v1/rooms/{roomId}` | `rooms:read` |
+| `PUT /v1/rooms/{roomId}/status` | `rooms:manage` |
+| `GET /v1/reservations` | `reservations:read` |
+| `GET /v1/reservations/{reservationId}` | `reservations:read` |
+| `POST /v1/reservations` | `reservations:write` |
+| `GET /health` | none (public) |
+
 ## Failure catalogue (A.6.2)
 
 Every row below is produced by `sendProblem()` in `src/problem.js`, and every

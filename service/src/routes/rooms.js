@@ -2,10 +2,11 @@ const express = require("express");
 const {
   validateRoomId,
   validateRoomQuery,
+  validateRoomStatusUpdate,
   decodeCursor,
   encodeCursor
 } = require("../schemas/rooms");
-const { listRooms, findRoom } = require("../store/rooms");
+const { listRooms, findRoom, updateRoomStatus } = require("../store/rooms");
 const { toRoom } = require("../representations/rooms");
 const { sendProblem } = require("../problem");
 
@@ -41,6 +42,67 @@ function createRoomRouter(db) {
       });
     } catch (err) {
       next(err);
+    }
+  });
+
+  router.put("/:roomId/status", async (req, res, next) => {
+    // Validate the room identifier before opening a database transaction.
+    if (!validateRoomId(req.params.roomId)) {
+      return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: "roomId must match the room identifier format.",
+        instance: req.originalUrl
+      });
+    }
+
+    // Validate the complete status-update body required by this endpoint.
+    const bodyError = validateRoomStatusUpdate(req.body);
+    if (bodyError) {
+      return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: bodyError,
+        instance: req.originalUrl
+      });
+    }
+
+    let connection;
+    let transactionStarted = false;
+
+    try {
+      // Use one connection so the status update and reservation cancellations are atomic.
+      connection = await db.getConnection();
+      await connection.beginTransaction();
+      transactionStarted = true;
+
+      const room = await updateRoomStatus(connection, req.params.roomId, req.body.status);
+
+      if (!room) {
+        await connection.rollback();
+        transactionStarted = false;
+        return sendProblem(res, {
+          status: 404,
+          type: "https://api.example.com/problems/not-found",
+          title: "Resource not found",
+          detail: "The requested room identifier does not exist.",
+          instance: req.originalUrl
+        });
+      }
+
+      // Make the room status and all resulting cancellations visible at the same time.
+      await connection.commit();
+      transactionStarted = false;
+      return res.status(200).json(toRoom(room));
+    } catch (err) {
+      // Undo both database changes when either operation fails.
+      if (transactionStarted) await connection.rollback();
+      return next(err);
+    } finally {
+      // Return the checked-out connection to the MySQL pool.
+      if (connection) connection.release();
     }
   });
 

@@ -52,9 +52,29 @@ function validateRoomQuery(query) {
   return errors;
 }
 
+function validateRoomStatusUpdate(body) {
+  // Reject non-object bodies before reading their status property.
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return "Request body must be an object containing status.";
+  }
+
+  // Reject omitted, misspelled, or extra fields that are outside the contract.
+  if (Object.keys(body).length !== 1 || !("status" in body)) {
+    return "Request body must contain only the status field.";
+  }
+
+  // Limit updates to the three room states declared by the contract.
+  if (!["available", "maintenance", "reserved"].includes(body.status)) {
+    return "status must be available, maintenance, or reserved.";
+  }
+
+  return null;
+}
+
 module.exports = {
   validateRoomId,
   validateRoomQuery,
+  validateRoomStatusUpdate,
   decodeCursor,
   encodeCursor
 };

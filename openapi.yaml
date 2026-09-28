@@ -16,7 +16,7 @@ openapi: 3.1.0
 info:
 
   title: RoomReservation API
-  version: 0.3.1
+  version: 0.5.0
   description: |
     Used by students to reserve rooms in the library
     All money amounts are whole numbers in the smallest unit
@@ -75,6 +75,37 @@ paths:
 
         '404':
           $ref: '#/components/responses/NotFound'
+  /rooms/{roomId}/status:
+    put:
+      operationId: updateRoomStatus
+      summary: Update a room's operational status
+      tags: [Rooms]
+      description: |
+        Changes a room's operational status. Setting the status to `maintenance`
+        or `reserved` permanently deletes its reservation entries.
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          description: Unique identifier of the room.
+          schema:
+            type: string
+            pattern: '^room_[A-Za-z0-9]{3,}$'
+          example: room_7Kq
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoomStatusUpdate' }
+      responses:
+        '200':
+          description: The updated room.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rooms' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /rooms:
     get:
       operationId: listRooms
@@ -128,6 +159,19 @@ paths:
     # read this document and not know about it.
     # -----------------------------------------------------------------
   /reservations:
+    get:
+      operationId: listReservations
+      summary: List room reservations
+      tags: [Reservations]
+      description: Returns every existing room reservation.
+      responses:
+        '200':
+          description: All room reservations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Reservation' }
     post:
       operationId: createReservation
       summary: Reserve a library room
@@ -199,7 +243,7 @@ components:
     # ---------------------------------------------------------------
     Rooms:
       type: object
-      required: [id, roomNumber, capacity, location, isAvailable]
+      required: [id, roomNumber, capacity, location, room_status]
       properties:
         id:
           type: string
@@ -295,6 +339,17 @@ components:
           format: date-time
           description: End timestamp in RFC 3339 format with timezone offset.
           example: '2026-09-01T12:00:00+07:00'
+
+    RoomStatusUpdate:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [available, maintenance, reserved]
+          description: The new operational status for the room.
+          example: maintenance
 
     Retirement:
       type: object

@@ -2,6 +2,23 @@
 
 All notable changes to `openapi.yaml` are recorded here
 
+## 0.5.0
+
+### Added
+- `PUT /v1/rooms/{roomId}/status` updates a room to `available`,
+  `maintenance`, or `reserved`. The latter two states delete the room's
+  reservation entries in the same transaction.
+
+## 0.4.1
+
+### Fixed
+- Aligned the required Rooms property with its declared `room_status` schema.
+
+## 0.4.0
+
+### Added
+- `GET /v1/reservations` returns every existing `Reservation` representation.
+
 ## 0.3.1
 
 ### Changed

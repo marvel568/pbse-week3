@@ -4,7 +4,7 @@ function toRoom(row) {
     roomNumber: row.roomNumber ?? row.room_number,
     capacity: Number(row.capacity),
     location: row.location,
-    isAvailable: Boolean(row.isAvailable ?? row.is_available)
+    room_status: row.room_status ?? row.roomStatus
   };
 }
 

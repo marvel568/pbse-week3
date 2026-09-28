@@ -55,4 +55,22 @@ async function findReservation(db, reservationId) {
   return rows[0] || null;
 }
 
-module.exports = { findReservationConflict, createReservation, findReservation };
+async function listReservations(db) {
+  // Select every reservation with field aliases matching the public representation.
+  const [rows] = await db.execute(
+    `SELECT id, room_id AS roomId, student_id AS studentId, status,
+            start_time AS startTime, end_time AS endTime, created_at AS createdAt
+       FROM reservations
+      ORDER BY created_at ASC, id ASC`
+  );
+
+  // Hand the complete result set to the route for representation conversion.
+  return rows;
+}
+
+module.exports = {
+  findReservationConflict,
+  createReservation,
+  findReservation,
+  listReservations
+};

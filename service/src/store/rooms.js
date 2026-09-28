@@ -6,7 +6,7 @@ async function listRooms(db, { status, limit = 20, offset = 0 }) {
       room_number AS roomNumber,
       capacity,
       location,
-      room_status = 'available' AS isAvailable
+      room_status
     FROM rooms
   `;
 
@@ -25,7 +25,7 @@ async function listRooms(db, { status, limit = 20, offset = 0 }) {
 async function findRoom(db, roomId) {
   const [rows] = await db.execute(
     `SELECT id, room_number AS roomNumber, capacity, location,
-            room_status = 'available' AS isAvailable
+            room_status
        FROM rooms
       WHERE id = ?`,
     [roomId]
@@ -33,4 +33,48 @@ async function findRoom(db, roomId) {
   return rows[0] || null;
 }
 
-module.exports = { listRooms, findRoom };
+async function updateRoomStatus(db, roomId, status) {
+  // Lock the room row so its status and related cancellations change together.
+  const room = await findRoomForUpdate(db, roomId);
+
+  // Let the route produce the documented 404 response when the room is absent.
+  if (!room) return null;
+
+  // Persist the requested operational status on the room.
+  await db.execute("UPDATE rooms SET room_status = ? WHERE id = ?", [status, roomId]);
+
+  if (status !== "available") {
+    // Previous implementation: preserve history while cancelling reservations that can still occur.
+    // await db.execute(
+    //   `UPDATE reservations
+    //       SET status = 'cancelled'
+    //     WHERE room_id = ?
+    //       AND status IN ('confirmed', 'active')`,
+    //   [roomId]
+    // );
+
+    // Permanently remove every reservation entry for a room made unavailable.
+    await db.execute(
+      "DELETE FROM reservations WHERE room_id = ?",
+      [roomId]
+    );
+  }
+
+  // Return the row shape consumed by the public room representation.
+  return { ...room, room_status: status };
+}
+
+async function findRoomForUpdate(db, roomId) {
+  // Lock the selected room until the surrounding transaction commits or rolls back.
+  const [rows] = await db.execute(
+    `SELECT id, room_number AS roomNumber, capacity, location, room_status
+       FROM rooms
+      WHERE id = ?
+      FOR UPDATE`,
+    [roomId]
+  );
+
+  return rows[0] || null;
+}
+
+module.exports = { listRooms, findRoom, updateRoomStatus };

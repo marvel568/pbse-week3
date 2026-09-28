@@ -2,6 +2,9 @@
 
 Implementation of the contract in `../openapi.yaml`.
 
+Deployment URL: https://pbse-week3-vercel.vercel.app 
+Example endpoint: https://pbse-week3-vercel.vercel.app/v1/rooms
+
 ## Operations (A.3)
 
 | Operation | Served by | Remaining work |
@@ -10,6 +13,8 @@ Implementation of the contract in `../openapi.yaml`.
 | `GET /v1/rooms` | service | — |
 | `POST /v1/reservations` | service | — |
 | `GET /v1/reservations/{reservationId}` | service | — |
+| `GET /v1/reservations` | service | — |
+| `PUT /v1/rooms/{roomId}/status` | service | Updates room status and deletes reservations when unavailable. |
 
 ## Failure catalogue (A.6.2)
 
@@ -29,7 +34,7 @@ Every row below is produced by `sendProblem()` in `src/problem.js`, and every
 | Reservation identifier not found (`GET /reservations/{reservationId}`) | 404 | `https://api.example.com/problems/not-found` |
 | `endTime` not after `startTime` | 422 | `https://api.example.com/problems/validation-failed` |
 | `roomId` well-formed but doesn't reference an existing room (create) | 422 | `https://api.example.com/problems/validation-failed` |
-| Room exists but `isAvailable = false` | 409 | `https://api.example.com/problems/outlet-closed` |
+| Room exists but `room_status` is not `available` | 409 | `https://api.example.com/problems/outlet-closed` |
 | Overlapping active/confirmed reservation on the room | 409 | `https://api.example.com/problems/reservation-conflict` |
 | Idempotency key reused with a different request body | 409 | `https://api.example.com/problems/idempotency-key-reuse` |
 | Uncaught exception anywhere in the app | 500 | `https://api.example.com/problems/internal-error` |

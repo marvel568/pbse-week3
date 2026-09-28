@@ -65,7 +65,7 @@ async function testListRooms() {
     assert.equal(typeof room.roomNumber, "string");
     assert.equal(typeof room.capacity, "number");
     assert.equal(typeof room.location, "string");
-    assert.equal(typeof room.isAvailable, "boolean");
+    assert.ok(["available", "reserved", "maintenance"].includes(room.room_status));
   }
 
   console.log("✓ GET /v1/rooms");
@@ -159,10 +159,10 @@ async function testRoomStatusFilters() {
 
   assert.equal(maintenance.response.status, 200);
   assert.deepEqual(maintenance.body.items.map((room) => room.id), ["room_A12"]);
-  assert.equal(maintenance.body.items[0].isAvailable, false);
+  assert.equal(maintenance.body.items[0].room_status, "maintenance");
   assert.equal(reserved.response.status, 200);
   assert.deepEqual(reserved.body.items.map((room) => room.id), ["room_X91"]);
-  assert.equal(reserved.body.items[0].isAvailable, false);
+  assert.equal(reserved.body.items[0].room_status, "reserved");
 
   console.log("GET /v1/rooms status filters");
 }
@@ -177,6 +177,24 @@ async function testMalformedJson() {
   assertProblem(result, 400);
 
   console.log("POST /v1/reservations malformed JSON -> 400");
+}
+
+async function testListReservations() {
+  // Request the reservation collection and verify the documented array response.
+  const result = await request("/reservations");
+
+  assert.equal(result.response.status, 200);
+  assert.ok(Array.isArray(result.body));
+
+  for (const reservation of result.body) {
+    // Check that every returned item contains the public reservation fields.
+    assert.equal(typeof reservation.id, "string");
+    assert.equal(typeof reservation.roomId, "string");
+    assert.equal(typeof reservation.studentId, "string");
+    assert.equal(typeof reservation.status, "string");
+  }
+
+  console.log("GET /v1/reservations");
 }
 
 async function testReservationRequiresIdempotencyKey() {
@@ -271,6 +289,24 @@ async function testCreateReadAndIdempotency() {
   console.log("POST /v1/reservations create, read, and idempotency");
 }
 
+async function testUpdateRoomStatusDeletesReservations() {
+  // Mark the seeded available room unavailable through the status sub-resource.
+  const update = await request("/rooms/room_7Kq/status", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "maintenance" })
+  });
+
+  assert.equal(update.response.status, 200);
+  assert.equal(update.body.room_status, "maintenance");
+
+  // Read the seeded reservation to confirm the status update removed it.
+  const reservation = await request("/reservations/res_8Fk2p");
+  assertProblem(reservation, 404);
+
+  console.log("PUT /v1/rooms/{roomId}/status deletes reservations");
+}
+
 async function main() {
   console.log(`Running contract tests against ${BASE_URL}`);
 
@@ -282,11 +318,13 @@ async function main() {
   await testRoomNotFound();
   await testInvalidRoomId();
   await testRoomStatusFilters();
+  await testListReservations();
   await testMalformedJson();
   await testReservationRequiresIdempotencyKey();
   await testReservationValidation();
   await testReservationConflicts();
   await testCreateReadAndIdempotency();
+  await testUpdateRoomStatusDeletesReservations();
 
   console.log("\nContract tests passed.");
 }

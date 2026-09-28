@@ -10,7 +10,8 @@ const { findRoom } = require("../store/rooms");
 const {
   findReservationConflict,
   createReservation,
-  findReservation
+  findReservation,
+  listReservations
 } = require("../store/reservations");
 const {
   createIdempotencyKey,
@@ -22,6 +23,18 @@ const { sendProblem } = require("../problem");
 
 function createReservationRouter(db) {
   const router = express.Router();
+
+  router.get("/", async (_req, res, next) => {
+    try {
+      // Read every persisted reservation before converting database rows to API objects.
+      const reservations = await listReservations(db);
+      // Return only the documented Reservation representation for each stored row.
+      return res.status(200).json(reservations.map(toReservation));
+    } catch (err) {
+      // Delegate unexpected database failures to the global error handler.
+      return next(err);
+    }
+  });
 
   router.get("/:reservationId", async (req, res, next) => {
     if (!validateReservationId(req.params.reservationId)) {
@@ -149,7 +162,7 @@ function createReservationRouter(db) {
         });
       }
 
-      if (!room.isAvailable) {
+      if (room.room_status !== "available") {
         await connection.rollback();
         transactionStarted = false;
         return sendProblem(res, {

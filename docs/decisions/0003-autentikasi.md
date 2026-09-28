@@ -40,13 +40,38 @@ an audience (`aud`), an issuer (`iss`), an expiry (`exp`), and a role claim.
 
 | Actor | What they do |
 |---|---|
-| Student | May call `GET /health` and read room information through `GET /v1/rooms` and `GET /v1/rooms/{roomId}`. May create reservations and read reservations|
+| Student | May call `GET /health` and read room information through `GET /v1/rooms` and `GET /v1/rooms/{roomId}`. May create reservations and read reservations. |
 | Administrator | May read every reservation through `GET /v1/reservations`, read any individual reservation, and update room status through `PUT /v1/rooms/{roomId}/status`. |
 
 The service will derive the acting identity and role from a verified access
 token. It will not trust a client-supplied role header or a `studentId` supplied
 only in the request body. When creating a reservation, the authenticated
 student identity will be used to enforce ownership.
+
+### Client classification
+
+Every application that requests a token is classified by one question: can
+the user read values stored inside this application?
+
+| Our client | Runs on | Public/Confidential | Flow | Holds a secret? |
+|---|---|---|---|---|
+| Web client (Session 5) | User's browser | Public | Authorization Code + PKCE | No |
+| Mobile client (Session 6) | User's device | Public | Authorization Code + PKCE | No |
+
+Rules for public clients:
+
+1. Authorization Code with PKCE, no client secret.
+2. The client sends only the hash of a random verifier (the challenge) and
+   must present the original verifier at code exchange, so an intercepted
+   code alone is useless.
+3. `state` is random, stored until the callback, and compared. It protects
+   the login-to-callback link, a different problem from the one PKCE solves.
+4. Redirect URIs are registered and matched in full, with no wildcards.
+5. Tokens never appear in the browser address bar.
+
+Obfuscating or splitting a secret inside a public client does not make it
+confidential: the app must reconstruct the value to use it, so a user who
+controls the device can read it.
 
 ## Alternatives considered
 
@@ -83,9 +108,11 @@ committed to the repository.
 
 Protected endpoints will return `401 Unauthorized` when a token is missing,
 expired, malformed, or cannot be verified. They will return `403 Forbidden`
-when a verified caller lacks the required role or attempts to read another
-student's reservation. These failures will be documented in OpenAPI as Problem
-Details responses and tested in CI.
+when a verified caller lacks the required role or scope. A reservation that 
+does not exist and a reservation that belongs to another student are both 
+answered with an identical `404 Not Found`, so identifiers cannot be enumerated. 
+These failures will be documented in OpenAPI as Problem Details responses 
+and tested in CI.
 
 The current unauthenticated implementation remains temporarily available while
 the authentication middleware and tests are introduced. Once enforcement is

@@ -85,8 +85,10 @@ jobs:
       - name: Verify idempotent replay created one row
         working-directory: service
         run: |
+          # Count only the reservation created by the idempotency test, not seed data later deleted by another test.
+          reservation_id="$(cat .persistence-id)"
           test "$(mysql --host=127.0.0.1 --port=3306 --user=root --skip-column-names \
-            -e "SELECT COUNT(*) FROM room_reservation.reservations")" = "2"
+            -e "SELECT COUNT(*) FROM room_reservation.reservations WHERE id = '${reservation_id}'")" = "1"
 
       - name: Verify created reservation survives restart
         working-directory: service

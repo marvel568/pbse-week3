@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:8080";
@@ -259,7 +260,8 @@ async function testReservationConflicts() {
 }
 
 async function testCreateReadAndIdempotency() {
-  const key = "00000000-0000-4000-8000-000000000006";
+  // Use a new key on every suite run while reusing it within this test for replay.
+  const key = crypto.randomUUID();
   const created = await createReservation(key);
 
   assert.equal(created.response.status, 201);
@@ -290,8 +292,26 @@ async function testCreateReadAndIdempotency() {
 }
 
 async function testUpdateRoomStatusDeletesReservations() {
-  // Mark the seeded available room unavailable through the status sub-resource.
-  const update = await request("/rooms/room_7Kq/status", {
+  // Restore the reusable test room before creating a reservation for this test.
+  const restore = await request("/rooms/room_B77/status", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "available" })
+  });
+  assert.equal(restore.response.status, 200);
+
+  // Create a separate reservation so this test can verify that the status update deletes it.
+  const created = await createReservation(
+    crypto.randomUUID(),
+    reservationBody({
+      startTime: "2026-12-01T10:00:00+07:00",
+      endTime: "2026-12-01T12:00:00+07:00"
+    })
+  );
+  assert.equal(created.response.status, 201);
+
+  // Mark the reusable room unavailable through the status sub-resource.
+  const update = await request("/rooms/room_B77/status", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status: "maintenance" })
@@ -300,9 +320,17 @@ async function testUpdateRoomStatusDeletesReservations() {
   assert.equal(update.response.status, 200);
   assert.equal(update.body.room_status, "maintenance");
 
-  // Read the seeded reservation to confirm the status update removed it.
-  const reservation = await request("/reservations/res_8Fk2p");
+  // Read the created reservation to confirm the status update removed it.
+  const reservation = await request(created.response.headers.get("location"));
   assertProblem(reservation, 404);
+
+  // Return the reusable room to its seed status for subsequent local runs.
+  const cleanup = await request("/rooms/room_B77/status", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "available" })
+  });
+  assert.equal(cleanup.response.status, 200);
 
   console.log("PUT /v1/rooms/{roomId}/status deletes reservations");
 }
@@ -323,8 +351,8 @@ async function main() {
   await testReservationRequiresIdempotencyKey();
   await testReservationValidation();
   await testReservationConflicts();
-  await testCreateReadAndIdempotency();
   await testUpdateRoomStatusDeletesReservations();
+  await testCreateReadAndIdempotency();
 
   console.log("\nContract tests passed.");
 }

@@ -1,0 +1,22 @@
+========================================
+ STEPS TO RUN THE WEBSITE
+========================================
+
+1. Open your terminal and navigate to the service folder:
+   $ cd pbse-week3-main/service
+
+2. Install the necessary project dependencies:
+   $ npm install
+
+3. Configure your database environment variables (copy .env.example to .env):
+   $ cp .env.example .env
+
+4. Start the backend web server:
+   $ npm start
+   (or run: npm run dev)
+
+5. Open your web browser and navigate to:
+   http://localhost:3000
+
+6. Click "Fill Admin Credentials" or "Fill User Credentials" on the login screen to test the accounts!
+========================================

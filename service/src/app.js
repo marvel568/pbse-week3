@@ -1,4 +1,5 @@
 require("dotenv").config();
+const path = require('path')
 
 const express = require("express");
 const mysql = require("mysql2/promise");
@@ -18,6 +19,7 @@ function requiredConfig() {
 
 function createApp(db) {
   const app = express();
+  app.use(express.static(path.join(__dirname, '../public')));
 
   app.use(express.json());
 

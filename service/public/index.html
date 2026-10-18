@@ -87,10 +87,7 @@
         <div id="login-section" class="card">
             <h2>Website Login</h2>
             <p>Select an account preset or enter your details:</p>
-            <div style="margin-bottom: 15px;">
-                <button type="button" onclick="fillCredentials('admin')">Fill Admin Credentials</button>
-                <button type="button" onclick="fillCredentials('user')" style="background-color: #0d9488;">Fill User Credentials</button>
-            </div>
+        
             <form id="login-form" onsubmit="handleLogin(event)">
                 <div class="form-group">
                     <label>Email / Username</label>
@@ -163,16 +160,6 @@
 
     <script>
         let currentUser = null;
-
-        function fillCredentials(role) {
-            if (role === 'admin') {
-                document.getElementById('username').value = 'admin@example.com';
-                document.getElementById('password').value = 'adminpassword123';
-            } else {
-                document.getElementById('username').value = 'user@example.com';
-                document.getElementById('password').value = 'userpassword123';
-            }
-        }
 
         function handleLogin(e) {
             e.preventDefault();

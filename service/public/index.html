@@ -63,6 +63,8 @@
         .btn-danger:hover { background-color: #dc2626; }
         .btn-warning { background-color: #d97706; }
         .btn-warning:hover { background-color: #b45309; }
+        .btn-secondary { background-color: #64748b; }
+        .btn-secondary:hover { background-color: #475569; }
         .hidden { display: none !important; }
         .error-msg { color: #ef4444; font-size: 14px; margin-top: 10px; font-weight: 500; }
         .success-msg { color: #166534; font-size: 14px; margin-top: 10px; font-weight: 500; }
@@ -154,6 +156,26 @@
                 </table>
             </div>
 
+            <!-- BOOKING FORM (opens when a user clicks "Book Room") -->
+            <form id="booking-form" class="hidden" onsubmit="submitBooking(event)" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px;">
+                <h3>Book: <span id="booking-room-label"></span></h3>
+                <div class="form-group">
+                    <label for="booking-student">Student ID</label>
+                    <input type="text" id="booking-student" required>
+                </div>
+                <div class="form-group">
+                    <label for="booking-start">Start</label>
+                    <input type="datetime-local" id="booking-start" required>
+                </div>
+                <div class="form-group">
+                    <label for="booking-end">End</label>
+                    <input type="datetime-local" id="booking-end" required>
+                </div>
+                <button type="submit" id="booking-submit">Confirm Reservation</button>
+                <button type="button" class="btn-secondary" onclick="closeBooking()">Close</button>
+                <div id="booking-error" class="error-msg hidden" role="alert"></div>
+            </form>
+
             <!-- RESERVATIONS LIST -->
             <div style="margin-top: 30px;">
                 <h3 id="reservations-title">Reservations</h3>
@@ -163,9 +185,10 @@
                         <tr>
                             <th>ID</th>
                             <th>Room</th>
-                            <th>Date & Time</th>
-                            <th>User</th>
-                            <th>Action</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Student</th>
+                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -177,6 +200,8 @@
     <script>
         let currentUser = null;
         let roomNamesById = {};
+        let bookingRoomId = null;
+        let bookingKey = null;
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -193,16 +218,37 @@
             return null;
         }
 
+        function formatTime(value) {
+            const d = new Date(value);
+            return isNaN(d) ? String(value ?? '') : d.toLocaleString();
+        }
+
+        function toLocalInput(d) {
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
         async function apiFetch(url, options = {}) {
             const response = await fetch(url, { credentials: 'same-origin', ...options });
             if (!response.ok) {
                 const error = new Error(`Request failed with HTTP ${response.status}`);
                 error.status = response.status;
+                try { error.problem = JSON.parse(await response.text()); } catch (_) { error.problem = null; }
                 throw error;
             }
             if (response.status === 204) return null;
             const text = await response.text();
             return text ? JSON.parse(text) : null;
+        }
+
+        // Builds a readable message from the server's problem response (detail + invalidFields).
+        function problemMessage(err, fallback) {
+            const p = err.problem;
+            if (!p || !p.detail) return fallback;
+            const fields = Array.isArray(p.invalidFields) && p.invalidFields.length
+                ? ` (${p.invalidFields.map(f => typeof f === 'string' ? f : (f.field || f.name || JSON.stringify(f))).join(', ')})`
+                : '';
+            return p.detail + fields;
         }
 
         function showReservationStatus(message, isError) {
@@ -249,7 +295,7 @@
                 document.getElementById('reservations-title').innerText = 'All Reservations (Admin View)';
             } else {
                 document.getElementById('admin-view').classList.add('hidden');
-                document.getElementById('reservations-title').innerText = 'My Reservations';
+                document.getElementById('reservations-title').innerText = 'Reservations';
             }
 
             await loadData();
@@ -259,6 +305,7 @@
             try { await apiFetch('/auth/logout', { method: 'POST' }); } catch (err) { console.error('Logout failed:', err); }
             currentUser = null;
             roomNamesById = {};
+            closeBooking();
             document.getElementById('login-section').classList.remove('hidden');
             document.getElementById('dashboard-section').classList.add('hidden');
             document.getElementById('login-form').reset();
@@ -331,38 +378,26 @@
         async function loadReservations() {
             const resTbody = document.querySelector('#reservations-table tbody');
             try {
-                let reservations = toList(await apiFetch('/v1/reservations'));
+                const reservations = toList(await apiFetch('/v1/reservations'));
                 if (!reservations) throw new Error('The reservations service returned an unexpected response.');
-
-                // Regular users only see their own reservations.
-                // (The server should enforce this too; this is a display filter only.)
-                if (currentUser.role === 'user') {
-                    reservations = reservations.filter(res => {
-                        const owner = res.userEmail || res.user;
-                        return !owner || owner === currentUser.email;
-                    });
-                }
 
                 resTbody.innerHTML = '';
 
                 if (reservations.length === 0) {
-                    resTbody.innerHTML = '<tr><td colspan="5" class="empty-row">No reservations yet.</td></tr>';
+                    resTbody.innerHTML = '<tr><td colspan="6" class="empty-row">No reservations yet.</td></tr>';
                     return;
                 }
 
                 reservations.forEach(res => {
-                    const roomId = res.roomId || res.room_id;
-                    const roomLabel = roomNamesById[String(roomId)] || roomId;
-                    const dateTime = res.dateTime || res.date || 'Scheduled Time';
-                    const userEmail = res.userEmail || res.user || currentUser.email;
-
+                    const roomLabel = roomNamesById[String(res.roomId)] || res.roomId;
                     resTbody.innerHTML += `
                         <tr>
                             <td>${escapeHtml(res.id)}</td>
                             <td>${escapeHtml(roomLabel)}</td>
-                            <td>${escapeHtml(dateTime)}</td>
-                            <td>${escapeHtml(userEmail)}</td>
-                            <td><button class="btn-danger" data-action="cancel" data-id="${escapeHtml(res.id)}">Cancel</button></td>
+                            <td>${escapeHtml(formatTime(res.startTime))}</td>
+                            <td>${escapeHtml(formatTime(res.endTime))}</td>
+                            <td>${escapeHtml(res.studentId)}</td>
+                            <td>${escapeHtml(res.status)}</td>
                         </tr>
                     `;
                 });
@@ -405,83 +440,93 @@
             loadData();
         }
 
-        function defaultBookingTime() {
-            const d = new Date();
-            d.setDate(d.getDate() + 1);
-            d.setHours(10, 0, 0, 0);
-            const pad = n => String(n).padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        // ---- Booking ----
+
+        function openBooking(roomId) {
+            bookingRoomId = roomId;
+            // One key per booking attempt. The server saves it only after a successful booking,
+            // so retrying after a failure with the same key is safe.
+            bookingKey = crypto.randomUUID();
+
+            const start = new Date();
+            start.setHours(start.getHours() + 1, 0, 0, 0);
+            const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+            document.getElementById('booking-room-label').textContent = roomNamesById[String(roomId)] || roomId;
+            document.getElementById('booking-start').min = toLocalInput(new Date());
+            document.getElementById('booking-start').value = toLocalInput(start);
+            document.getElementById('booking-end').value = toLocalInput(end);
+            document.getElementById('booking-error').classList.add('hidden');
+            clearReservationStatus();
+
+            const form = document.getElementById('booking-form');
+            form.classList.remove('hidden');
+            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
-        async function bookRoom(roomId, button) {
-            const dateTime = prompt("Enter reservation date and time (YYYY-MM-DD HH:MM):", defaultBookingTime());
-            if (!dateTime) return;
+        function closeBooking() {
+            bookingRoomId = null;
+            bookingKey = null;
+            const form = document.getElementById('booking-form');
+            form.reset();
+            form.classList.add('hidden');
+            document.getElementById('booking-error').classList.add('hidden');
+        }
 
-            const trimmed = dateTime.trim();
-            if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(trimmed) || isNaN(new Date(trimmed.replace(' ', 'T')))) {
-                showReservationStatus('Invalid date/time. Use the format YYYY-MM-DD HH:MM.', true);
-                return;
-            }
-            if (new Date(trimmed.replace(' ', 'T')) < new Date()) {
-                showReservationStatus('That date and time is in the past. Please pick a future time.', true);
-                return;
-            }
+        function showBookingError(message) {
+            const box = document.getElementById('booking-error');
+            box.textContent = message;
+            box.classList.remove('hidden');
+        }
 
-            if (button) button.disabled = true;
-            clearReservationStatus();
+        async function submitBooking(e) {
+            e.preventDefault();
+            document.getElementById('booking-error').classList.add('hidden');
+
+            const studentId = document.getElementById('booking-student').value.trim();
+            const start = new Date(document.getElementById('booking-start').value);
+            const end = new Date(document.getElementById('booking-end').value);
+
+            if (!studentId) return showBookingError('Please enter a student ID.');
+            if (isNaN(start) || isNaN(end)) return showBookingError('Please choose a valid start and end time.');
+            if (start < new Date()) return showBookingError('The start time is in the past. Please pick a future time.');
+            if (end <= start) return showBookingError('The end time must be after the start time.');
+
+            const submitBtn = document.getElementById('booking-submit');
+            submitBtn.disabled = true;
             try {
                 await apiFetch('/v1/reservations', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roomId, dateTime: trimmed, userEmail: currentUser.email })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Idempotency-Key': bookingKey
+                    },
+                    body: JSON.stringify({
+                        roomId: bookingRoomId,
+                        studentId,
+                        startTime: start.toISOString(),
+                        endTime: end.toISOString()
+                    })
                 });
+                closeBooking();
                 await loadData();
                 showReservationStatus('Reservation created successfully!', false);
             } catch (err) {
                 console.error('Booking failed:', err);
                 if (err.status === 401) { handleLogout(); return; }
-                showReservationStatus(
-                    err.status === 409 ? 'That room is already booked for that time.'
-                    : err.status === 400 || err.status === 422 ? 'The server rejected the reservation details. Check the date and time.'
-                    : `Could not create the reservation${err.status ? ` (HTTP ${err.status})` : ''}. Please try again.`,
-                    true
-                );
+                showBookingError(problemMessage(
+                    err,
+                    `Could not create the reservation${err.status ? ` (HTTP ${err.status})` : ''}. Please try again.`
+                ));
             } finally {
-                if (button) button.disabled = false;
+                submitBtn.disabled = false;
             }
         }
 
-        async function cancelReservation(reservationId, button) {
-            if (!confirm("Are you sure you want to cancel this reservation?")) return;
-
-            if (button) button.disabled = true;
-            clearReservationStatus();
-            try {
-                await apiFetch(`/v1/reservations/${encodeURIComponent(reservationId)}`, { method: 'DELETE' });
-                await loadData();
-                showReservationStatus('Reservation cancelled successfully!', false);
-            } catch (err) {
-                console.error('Cancel failed:', err);
-                if (err.status === 401) { handleLogout(); return; }
-                showReservationStatus(
-                    err.status === 404 ? 'That reservation no longer exists.'
-                    : err.status === 403 ? 'You are not allowed to cancel this reservation.'
-                    : `Could not cancel the reservation${err.status ? ` (HTTP ${err.status})` : ''}. Please try again.`,
-                    true
-                );
-                if (err.status === 404) loadData();
-            } finally {
-                if (button) button.disabled = false;
-            }
-        }
-
-        // Handle Book / Cancel clicks without putting ids inside inline JS.
+        // Handle Book clicks without putting ids inside inline JS.
         document.addEventListener('click', (event) => {
-            const button = event.target.closest('button[data-action]');
-            if (!button) return;
-            const id = button.dataset.id;
-            if (button.dataset.action === 'book') bookRoom(id, button);
-            if (button.dataset.action === 'cancel') cancelReservation(id, button);
+            const button = event.target.closest('button[data-action="book"]');
+            if (button) openBooking(button.dataset.id);
         });
     </script>
 </body>

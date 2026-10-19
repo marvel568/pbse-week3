@@ -1,364 +1,365 @@
-const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
-const fs = require("node:fs");
-
-const BASE_URL = process.env.BASE_URL || "http://localhost:8080";
-const API = `${BASE_URL}/v1`;
-
-async function request(path, options = {}) {
-  const url = path.startsWith("/v1/") ? path.replace(/^\/v1/, "") : path;
-  //const response = await fetch(`${API}${path}`, {
-  const response = await fetch(`${API}${url}`, {
-    ...options,
-    headers: {
-      Accept: "application/json, application/problem+json",
-      ...(options.headers || {})
-    }
-  });
-
-  let body = null;
-  const text = await response.text();
-
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = text;
-    }
-  }
-
-  return { response, body };
-}
-
-function assertProblem(result, expectedStatus) {
-  assert.equal(
-    result.response.status,
-    expectedStatus,
-    `Expected HTTP ${expectedStatus}, got ${result.response.status}`
-  );
-
-  assert.match(
-    result.response.headers.get("content-type") || "",
-    /application\/problem\+json/i,
-    "Error responses must use application/problem+json"
-  );
-
-  assert.equal(typeof result.body, "object");
-  assert.equal(result.body.status, expectedStatus);
-  assert.equal(typeof result.body.type, "string");
-  assert.equal(typeof result.body.title, "string");
-}
-
-async function testListRooms() {
-  const result = await request("/rooms");
-
-  assert.equal(result.response.status, 200);
-  assert.match(
-    result.response.headers.get("content-type") || "",
-    /application\/json/i
-  );
-
-  assert.equal(typeof result.body, "object");
-  assert.ok(Array.isArray(result.body.items));
-
-  for (const room of result.body.items) {
-    assert.equal(typeof room.id, "string");
-    assert.equal(typeof room.roomNumber, "string");
-    assert.equal(typeof room.capacity, "number");
-    assert.equal(typeof room.location, "string");
-    assert.ok(["available", "reserved", "maintenance"].includes(room.room_status));
-  }
-
-  console.log("✓ GET /v1/rooms");
-}
-
-async function testListRoomsWithLimit() {
-  const result = await request("/rooms?limit=1");
-
-  assert.equal(result.response.status, 200);
-  assert.ok(Array.isArray(result.body.items));
-  assert.ok(result.body.items.length <= 1);
-
-  console.log("✓ GET /v1/rooms?limit=1");
-}
-
-function reservationBody(overrides = {}) {
-  return {
-    roomId: "room_B77",
-    studentId: "s7654321",
-    startTime: "2026-11-01T10:00:00+07:00",
-    endTime: "2026-11-01T12:00:00+07:00",
-    ...overrides
-  };
-}
-
-async function createReservation(key, body = reservationBody()) {
-  return request("/reservations", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": key
-    },
-    body: JSON.stringify(body)
-  });
-}
-
-async function testRoomCursorPagination() {
-  const firstPage = await request("/rooms?limit=1");
-
-  assert.equal(firstPage.response.status, 200);
-  assert.equal(firstPage.body.items.length, 1);
-  assert.equal(typeof firstPage.body.nextCursor, "string");
-
-  const secondPage = await request(
-    `/rooms?limit=1&cursor=${encodeURIComponent(firstPage.body.nextCursor)}`
-  );
-
-  assert.equal(secondPage.response.status, 200);
-  assert.equal(secondPage.body.items.length, 1);
-  assert.notEqual(secondPage.body.items[0].id, firstPage.body.items[0].id);
-
-  console.log("GET /v1/rooms cursor pagination");
-}
-
-async function testInvalidCursor() {
-  const result = await request("/rooms?cursor=not-a-cursor");
-
-  assertProblem(result, 400);
-
-  console.log("GET /v1/rooms invalid cursor -> 400");
-}
-
-async function testInvalidLimit() {
-  const result = await request("/rooms?limit=0");
-
-  assertProblem(result, 400);
-
-  console.log("✓ GET /v1/rooms?limit=0 → 400");
-}
-
-async function testRoomNotFound() {
-  //const result = await request("/rooms/room_DOES_NOT_EXIST");
-  const result = await request("/rooms/room_9999999notreal");
-
-  assertProblem(result, 404);
-
-  console.log("✓ GET /v1/rooms/{roomId} → 404");
-}
-
-async function testInvalidRoomId() {
-  const result = await request("/rooms/not-a-valid-room-id");
-
-  assertProblem(result, 400);
-
-  console.log("✓ GET /v1/rooms/{roomId} invalid ID → 400");
-}
-
-async function testRoomStatusFilters() {
-  const maintenance = await request("/rooms?status=maintenance");
-  const reserved = await request("/rooms?status=reserved");
-
-  assert.equal(maintenance.response.status, 200);
-  assert.deepEqual(maintenance.body.items.map((room) => room.id), ["room_A12"]);
-  assert.equal(maintenance.body.items[0].room_status, "maintenance");
-  assert.equal(reserved.response.status, 200);
-  assert.deepEqual(reserved.body.items.map((room) => room.id), ["room_X91"]);
-  assert.equal(reserved.body.items[0].room_status, "reserved");
-
-  console.log("GET /v1/rooms status filters");
-}
-
-async function testMalformedJson() {
-  const result = await request("/reservations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{"
-  });
-
-  assertProblem(result, 400);
-
-  console.log("POST /v1/reservations malformed JSON -> 400");
-}
-
-async function testListReservations() {
-  // Request the reservation collection and verify the documented array response.
-  const result = await request("/reservations");
-
-  assert.equal(result.response.status, 200);
-  assert.ok(Array.isArray(result.body));
-
-  for (const reservation of result.body) {
-    // Check that every returned item contains the public reservation fields.
-    assert.equal(typeof reservation.id, "string");
-    assert.equal(typeof reservation.roomId, "string");
-    assert.equal(typeof reservation.studentId, "string");
-    assert.equal(typeof reservation.status, "string");
-  }
-
-  console.log("GET /v1/reservations");
-}
-
-async function testReservationRequiresIdempotencyKey() {
-  const result = await request("/reservations", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      roomId: "room_7Kq",
-      studentId: "s1234567",
-      startTime: "2026-09-10T10:00:00+07:00",
-      endTime: "2026-09-10T12:00:00+07:00"
-    })
-  });
-
-  assertProblem(result, 400);
-
-  console.log("✓ POST /v1/reservations without Idempotency-Key → 400");
-}
-
-async function testReservationValidation() {
-  const invalidTimestamp = await createReservation(
-    "00000000-0000-4000-8000-000000000001",
-    reservationBody({ startTime: "2026-02-30T10:00:00+07:00" })
-  );
-  assertProblem(invalidTimestamp, 400);
-
-  const invalidTimeRange = await createReservation(
-    "00000000-0000-4000-8000-000000000002",
-    reservationBody({ endTime: "2026-11-01T09:00:00+07:00" })
-  );
-  assertProblem(invalidTimeRange, 422);
-
-  const unknownRoom = await createReservation(
-    "00000000-0000-4000-8000-000000000003",
-    reservationBody({ roomId: "room_Z99" })
-  );
-  assertProblem(unknownRoom, 422);
-
-  console.log("POST /v1/reservations validation -> 400 and 422");
-}
-
-async function testReservationConflicts() {
-  const unavailableRoom = await createReservation(
-    "00000000-0000-4000-8000-000000000004",
-    reservationBody({ roomId: "room_A12" })
-  );
-  assertProblem(unavailableRoom, 409);
-
-  const overlappingReservation = await createReservation(
-    "00000000-0000-4000-8000-000000000005",
-    reservationBody({
-      roomId: "room_7Kq",
-      startTime: "2026-09-10T10:30:00+07:00",
-      endTime: "2026-09-10T11:30:00+07:00"
-    })
-  );
-  assertProblem(overlappingReservation, 409);
-
-  console.log("POST /v1/reservations domain conflicts -> 409");
-}
-
-async function testCreateReadAndIdempotency() {
-  // Use a new key on every suite run while reusing it within this test for replay.
-  const key = crypto.randomUUID();
-  const created = await createReservation(key);
-
-  assert.equal(created.response.status, 201);
-  assert.match(created.response.headers.get("location") || "", /^\/v1\/reservations\/res_/);
-  assert.equal(created.body.status, "confirmed");
-  assert.equal(typeof created.body.createdAt, "string");
-
-  const read = await request(created.response.headers.get("location"));
-  assert.equal(read.response.status, 200);
-  assert.deepEqual(read.body, created.body);
-
-  const replay = await createReservation(key);
-  assert.equal(replay.response.status, 201);
-  assert.equal(replay.response.headers.get("location"), created.response.headers.get("location"));
-  assert.deepEqual(replay.body, created.body);
-
-  const reusedKey = await createReservation(
-    key,
-    reservationBody({ studentId: "s7654322" })
-  );
-  assertProblem(reusedKey, 409);
-
-  if (process.env.PERSISTENCE_ID_FILE) {
-    fs.writeFileSync(process.env.PERSISTENCE_ID_FILE, created.body.id, "utf8");
-  }
-
-  console.log("POST /v1/reservations create, read, and idempotency");
-}
-
-async function testUpdateRoomStatusDeletesReservations() {
-  // Restore the reusable test room before creating a reservation for this test.
-  const restore = await request("/rooms/room_B77/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "available" })
-  });
-  assert.equal(restore.response.status, 200);
-
-  // Create a separate reservation so this test can verify that the status update deletes it.
-  const created = await createReservation(
-    crypto.randomUUID(),
-    reservationBody({
-      startTime: "2026-12-01T10:00:00+07:00",
-      endTime: "2026-12-01T12:00:00+07:00"
-    })
-  );
-  assert.equal(created.response.status, 201);
-
-  // Mark the reusable room unavailable through the status sub-resource.
-  const update = await request("/rooms/room_B77/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "maintenance" })
-  });
-
-  assert.equal(update.response.status, 200);
-  assert.equal(update.body.room_status, "maintenance");
-
-  // Read the created reservation to confirm the status update removed it.
-  const reservation = await request(created.response.headers.get("location"));
-  assertProblem(reservation, 404);
-
-  // Return the reusable room to its seed status for subsequent local runs.
-  const cleanup = await request("/rooms/room_B77/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "available" })
-  });
-  assert.equal(cleanup.response.status, 200);
-
-  console.log("PUT /v1/rooms/{roomId}/status deletes reservations");
-}
-
-async function main() {
-  console.log(`Running contract tests against ${BASE_URL}`);
-
-  await testListRooms();
-  await testListRoomsWithLimit();
-  await testRoomCursorPagination();
-  await testInvalidLimit();
-  await testInvalidCursor();
-  await testRoomNotFound();
-  await testInvalidRoomId();
-  await testRoomStatusFilters();
-  await testListReservations();
-  await testMalformedJson();
-  await testReservationRequiresIdempotencyKey();
-  await testReservationValidation();
-  await testReservationConflicts();
-  await testUpdateRoomStatusDeletesReservations();
-  await testCreateReadAndIdempotency();
-
-  console.log("\nContract tests passed.");
-}
-
-main().catch((error) => {
-  console.error("\nContract tests failed.");
-  console.error(error.message);
-  process.exit(1);
-});
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room Reservation Portal</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 950px;
+            margin: 0 auto;
+        }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        h2, h3 { margin-top: 0; }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover { background-color: var(--primary-hover); }
+        .btn-danger { background-color: #ef4444; }
+        .btn-danger:hover { background-color: #dc2626; }
+        .btn-warning { background-color: #d97706; }
+        .btn-warning:hover { background-color: #b45309; }
+        .hidden { display: none !important; }
+        .error-msg { color: #ef4444; font-size: 14px; margin-top: 10px; font-weight: 500; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        th { background-color: #f1f5f9; }
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .badge-admin { background-color: #fee2e2; color: #991b1b; }
+        .badge-user { background-color: #e0e7ff; color: #3730a3; }
+        .badge-available { background-color: #dcfce7; color: #166534; }
+        .badge-unavailable { background-color: #fee2e2; color: #991b1b; }
+        .flex { display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- LOGIN SECTION -->
+        <div id="login-section" class="card">
+            <h2>Website Login</h2>
+            <p>Please enter your authorized login details:</p>
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Email / Username</label>
+                    <input type="text" id="username" required placeholder="admin@example.com or user@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <button type="submit">Log In</button>
+                <div id="login-error" class="error-msg hidden" role="alert"></div>
+            </form>
+        </div>
+
+        <!-- DASHBOARD SECTION -->
+        <div id="dashboard-section" class="card hidden">
+            <div class="flex">
+                <div>
+                    <h2>Dashboard</h2>
+                    <p>Welcome, <span id="user-display-name" style="font-weight: bold;"></span> <span id="role-badge" class="badge"></span></p>
+                </div>
+                <button onclick="handleLogout()" class="btn-danger">Log Out</button>
+            </div>
+
+            <!-- ADMIN VIEW: ADD ROOM -->
+            <div id="admin-view" class="hidden" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px;">
+                <h3>Admin Panel: Manage Rooms</h3>
+                <form id="room-form" onsubmit="createRoom(event)" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>Room Name / Number</label>
+                        <input type="text" id="room-name" required placeholder="e.g., Conference Room A">
+                    </div>
+                    <div class="form-group">
+                        <label>Capacity</label>
+                        <input type="number" id="room-capacity" required placeholder="e.g., 10">
+                    </div>
+                    <button type="submit">Add New Room</button>
+                </form>
+            </div>
+
+            <!-- ROOMS LIST -->
+            <div style="margin-top: 20px;">
+                <h3>Rooms Directory</h3>
+                <div id="rooms-error" class="error-msg hidden" role="alert"></div>
+                <table id="rooms-table">
+                    <thead>
+                        <tr>
+                            <th>Room Name</th>
+                            <th>Capacity</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <!-- RESERVATIONS LIST -->
+            <div style="margin-top: 30px;">
+                <h3 id="reservations-title">Reservations</h3>
+                <table id="reservations-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Room</th>
+                            <th>Date & Time</th>
+                            <th>User</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, { credentials: 'same-origin', ...options });
+            if (!response.ok) {
+                const error = new Error(`Request failed with HTTP ${response.status}`);
+                error.status = response.status;
+                throw error;
+            }
+            return response.status === 204 ? null : response.json();
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const usernameInput = document.getElementById('username').value.trim();
+            const passwordInput = document.getElementById('password').value;
+            const errorDiv = document.getElementById('login-error');
+            errorDiv.classList.add('hidden');
+            try {
+                currentUser = await apiFetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: usernameInput, password: passwordInput })
+                });
+            } catch (err) {
+                currentUser = null;
+                errorDiv.textContent = err.status === 401
+                    ? 'Invalid username or password. Please try again.'
+                    : 'Login is unavailable right now. Please try again later.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            document.getElementById('user-display-name').innerText = currentUser.name;
+            const badge = document.getElementById('role-badge');
+            badge.innerText = currentUser.role.toUpperCase();
+            badge.className = `badge badge-${currentUser.role}`;
+
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('dashboard-section').classList.remove('hidden');
+
+            if (currentUser.role === 'admin') {
+                document.getElementById('admin-view').classList.remove('hidden');
+                document.getElementById('reservations-title').innerText = 'All Reservations (Admin View)';
+            } else {
+                document.getElementById('admin-view').classList.add('hidden');
+                document.getElementById('reservations-title').innerText = 'My Reservations';
+            }
+
+            await loadData();
+        }
+
+        async function handleLogout() {
+            try { await apiFetch('/auth/logout', { method: 'POST' }); } catch (err) { console.error('Logout failed:', err); }
+            currentUser = null;
+            document.getElementById('login-section').classList.remove('hidden');
+            document.getElementById('dashboard-section').classList.add('hidden');
+            document.getElementById('login-form').reset();
+            document.getElementById('login-error').classList.add('hidden');
+        }
+
+        async function loadData() {
+            const roomsError = document.getElementById('rooms-error');
+            roomsError.classList.add('hidden');
+            try {
+                // Fetch Rooms
+                const roomsResponse = await apiFetch('/v1/rooms');
+                const rooms = Array.isArray(roomsResponse) ? roomsResponse : roomsResponse.items;
+                if (!Array.isArray(rooms)) throw new Error('The rooms service returned an unexpected response.');
+                const roomsTbody = document.querySelector('#rooms-table tbody');
+                roomsTbody.innerHTML = '';
+                
+                rooms.forEach(room => {
+                    const isAvailable = room.room_status === 'available';
+                    const statusBadge = isAvailable 
+                        ? `<span class="badge badge-available">Available</span>` 
+                        : `<span class="badge badge-unavailable">Unavailable</span>`;
+
+                    let actionButton = '';
+                    if (currentUser.role === 'admin') {
+                        const toggleText = isAvailable ? 'Make Unavailable' : 'Make Available';
+                        const toggleClass = isAvailable ? 'btn-warning' : '';
+                        actionButton = `<button class="${toggleClass}" onclick="toggleRoomStatus('${room.id}', ${isAvailable})">${toggleText}</button>`;
+                    } else {
+                        if (isAvailable) {
+                            actionButton = `<button onclick="bookRoom('${room.id}')">Book Room</button>`;
+                        } else {
+                            actionButton = `<span style="color: #94a3b8; font-size: 14px;">Closed</span>`;
+                        }
+                    }
+
+                    roomsTbody.innerHTML += `
+                        <tr>
+                            <td>${room.roomNumber || room.name || room.room_name || 'Room ' + room.id}</td>
+                            <td>${room.capacity || 'N/A'}</td>
+                            <td>${statusBadge}</td>
+                            <td>${actionButton}</td>
+                        </tr>
+                    `;
+                });
+
+                // Fetch Reservations
+                let reservations = await apiFetch('/v1/reservations');
+
+                // If regular user, filter only their reservations
+                if (currentUser.role === 'user') {
+                    reservations = reservations.filter(res => res.userEmail === currentUser.email || res.user === currentUser.email || !res.userEmail);
+                }
+
+                const resTbody = document.querySelector('#reservations-table tbody');
+                resTbody.innerHTML = '';
+                
+                reservations.forEach(res => {
+                    const resId = res.id;
+                    const roomId = res.roomId || res.room_id;
+                    const dateTime = res.dateTime || res.date || 'Scheduled Time';
+                    const userEmail = res.userEmail || res.user || currentUser.email;
+
+                    resTbody.innerHTML += `
+                        <tr>
+                            <td>${resId}</td>
+                            <td>${roomId}</td>
+                            <td>${dateTime}</td>
+                            <td>${userEmail}</td>
+                            <td><button class="btn-danger" onclick="cancelReservation('${resId}')">Cancel</button></td>
+                        </tr>
+                    `;
+                });
+            } catch (err) {
+                console.error("Error loading data:", err);
+                roomsError.textContent = err.status === 500
+                    ? 'Rooms could not be loaded (HTTP 500). The rooms service or its database is reporting a server error. Please try again later.'
+                    : err.status === 401
+                        ? 'Your login has expired. Please log in again.'
+                        : `Could not load room and reservation data${err.status ? ` (HTTP ${err.status})` : ''}. Please try again later.`;
+                roomsError.classList.remove('hidden');
+                if (err.status === 401) handleLogout();
+            }
+        }
+
+        async function createRoom(e) {
+            e.preventDefault();
+            const name = document.getElementById('room-name').value;
+            const capacity = document.getElementById('room-capacity').value;
+
+            await apiFetch('/v1/rooms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, capacity: parseInt(capacity), isAvailable: true })
+            });
+
+            document.getElementById('room-form').reset();
+            loadData();
+        }
+
+        async function toggleRoomStatus(roomId, currentAvailability) {
+            const newStatus = !currentAvailability;
+            await apiFetch(`/v1/rooms/${roomId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus ? 'available' : 'maintenance' })
+            });
+            loadData();
+        }
+
+        async function bookRoom(roomId) {
+            const dateTime = prompt("Enter reservation date and time (YYYY-MM-DD HH:MM):", "2026-06-01 10:00");
+            if (!dateTime) return;
+
+            await fetch('/reservations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId, dateTime, userEmail: currentUser.email })
+            });
+
+            loadData();
+            alert("Reservation created successfully!");
+        }
+
+        async function cancelReservation(reservationId) {
+            if (!confirm("Are you sure you want to cancel this reservation?")) return;
+
+            await fetch(`/reservations/${reservationId}`, {
+                method: 'DELETE'
+            });
+
+            loadData();
+            alert("Reservation cancelled successfully!");
+        }
+    </script>
+</body>
+</html>

@@ -63,6 +63,7 @@
         .btn-warning { background-color: #d97706; }
         .btn-warning:hover { background-color: #b45309; }
         .hidden { display: none !important; }
+        .error-msg { color: #ef4444; font-size: 14px; margin-top: 10px; font-weight: 500; }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -92,7 +93,7 @@
         <!-- LOGIN SECTION -->
         <div id="login-section" class="card">
             <h2>Website Login</h2>
-            <p>Please enter your login details:</p>
+            <p>Please enter your authorized login details:</p>
             <form id="login-form" onsubmit="handleLogin(event)">
                 <div class="form-group">
                     <label>Email / Username</label>
@@ -103,6 +104,7 @@
                     <input type="password" id="password" required placeholder="••••••••">
                 </div>
                 <button type="submit">Log In</button>
+                <div id="login-error" class="error-msg hidden">Invalid credentials. Please check your username and password.</div>
             </form>
         </div>
 
@@ -172,14 +174,27 @@
 
         function handleLogin(e) {
             e.preventDefault();
-            const username = document.getElementById('username').value;
+            const usernameInput = document.getElementById('username').value.trim();
+            const passwordInput = document.getElementById('password').value.trim();
+            const errorDiv = document.getElementById('login-error');
+
+            // Secure credential check layer
+            const validAdminUser = "admin@example.com";
+            const validAdminPass = "adminpassword123";
             
-            if (username.toLowerCase().includes('admin')) {
-                currentUser = { name: 'Admin User', role: 'admin', email: username };
+            const validRegularUser = "user@example.com";
+            const validRegularPass = "userpassword123";
+
+            if (usernameInput === validAdminUser && passwordInput === validAdminPass) {
+                currentUser = { name: 'Admin User', role: 'admin', email: usernameInput };
+            } else if (usernameInput === validRegularUser && passwordInput === validRegularPass) {
+                currentUser = { name: 'Regular User', role: 'user', email: usernameInput };
             } else {
-                currentUser = { name: 'Regular User', role: 'user', email: username };
+                errorDiv.classList.remove('hidden');
+                return;
             }
 
+            errorDiv.classList.add('hidden');
             document.getElementById('user-display-name').innerText = currentUser.name;
             const badge = document.getElementById('role-badge');
             badge.innerText = currentUser.role.toUpperCase();
@@ -204,6 +219,7 @@
             document.getElementById('login-section').classList.remove('hidden');
             document.getElementById('dashboard-section').classList.add('hidden');
             document.getElementById('login-form').reset();
+            document.getElementById('login-error').classList.add('hidden');
         }
 
         async function loadData() {
@@ -249,7 +265,7 @@
 
                 // If regular user, filter only their reservations
                 if (currentUser.role === 'user') {
-                    reservations = reservations.filter(res => res.userEmail === currentUser.email || res.user === currentUser.email || true); // fallback logic depending on backend schema
+                    reservations = reservations.filter(res => res.userEmail === currentUser.email || res.user === currentUser.email || !res.userEmail);
                 }
 
                 const resTbody = document.querySelector('#reservations-table tbody');

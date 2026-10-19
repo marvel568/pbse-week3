@@ -1,365 +1,100 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Room Reservation Portal</title>
-    <style>
-        :root {
-            --primary: #4f46e5;
-            --primary-hover: #4338ca;
-            --bg: #f8fafc;
-            --card-bg: #ffffff;
-            --text: #1e293b;
-            --border: #e2e8f0;
-        }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 950px;
-            margin: 0 auto;
-        }
-        .card {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-        h2, h3 { margin-top: 0; }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-        input, select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        button:hover { background-color: var(--primary-hover); }
-        .btn-danger { background-color: #ef4444; }
-        .btn-danger:hover { background-color: #dc2626; }
-        .btn-warning { background-color: #d97706; }
-        .btn-warning:hover { background-color: #b45309; }
-        .hidden { display: none !important; }
-        .error-msg { color: #ef4444; font-size: 14px; margin-top: 10px; font-weight: 500; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        th, td {
-            text-align: left;
-            padding: 10px;
-            border-bottom: 1px solid var(--border);
-        }
-        th { background-color: #f1f5f9; }
-        .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-        .badge-admin { background-color: #fee2e2; color: #991b1b; }
-        .badge-user { background-color: #e0e7ff; color: #3730a3; }
-        .badge-available { background-color: #dcfce7; color: #166534; }
-        .badge-unavailable { background-color: #fee2e2; color: #991b1b; }
-        .flex { display: flex; justify-content: space-between; align-items: center; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <!-- LOGIN SECTION -->
-        <div id="login-section" class="card">
-            <h2>Website Login</h2>
-            <p>Please enter your authorized login details:</p>
-            <form id="login-form" onsubmit="handleLogin(event)">
-                <div class="form-group">
-                    <label>Email / Username</label>
-                    <input type="text" id="username" required placeholder="admin@example.com or user@example.com">
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="password" required placeholder="••••••••">
-                </div>
-                <button type="submit">Log In</button>
-                <div id="login-error" class="error-msg hidden" role="alert"></div>
-            </form>
-        </div>
+require("dotenv").config();
+const path = require('path')
 
-        <!-- DASHBOARD SECTION -->
-        <div id="dashboard-section" class="card hidden">
-            <div class="flex">
-                <div>
-                    <h2>Dashboard</h2>
-                    <p>Welcome, <span id="user-display-name" style="font-weight: bold;"></span> <span id="role-badge" class="badge"></span></p>
-                </div>
-                <button onclick="handleLogout()" class="btn-danger">Log Out</button>
-            </div>
+const express = require("express");
+const mysql = require("mysql2/promise");
+const fs = require("fs");
+const { createRoomRouter } = require("./routes/rooms");
+const { createReservationRouter } = require("./routes/reservations");
+const { sendProblem } = require("./problem");
+const { createAuthRouter, requireAuth } = require("./auth");
 
-            <!-- ADMIN VIEW: ADD ROOM -->
-            <div id="admin-view" class="hidden" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px;">
-                <h3>Admin Panel: Manage Rooms</h3>
-                <form id="room-form" onsubmit="createRoom(event)" style="margin-bottom: 20px;">
-                    <div class="form-group">
-                        <label>Room Name / Number</label>
-                        <input type="text" id="room-name" required placeholder="e.g., Conference Room A">
-                    </div>
-                    <div class="form-group">
-                        <label>Capacity</label>
-                        <input type="number" id="room-capacity" required placeholder="e.g., 10">
-                    </div>
-                    <button type="submit">Add New Room</button>
-                </form>
-            </div>
+function requiredConfig() {
+  const required = [
+    "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER",
+    "AUTH_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "USER_EMAIL", "USER_PASSWORD"
+  ];
 
-            <!-- ROOMS LIST -->
-            <div style="margin-top: 20px;">
-                <h3>Rooms Directory</h3>
-                <div id="rooms-error" class="error-msg hidden" role="alert"></div>
-                <table id="rooms-table">
-                    <thead>
-                        <tr>
-                            <th>Room Name</th>
-                            <th>Capacity</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
+  for (const name of required) {
+    if (!process.env[name]) {
+      throw new Error(`Missing required environment variable: ${name}`);
+    }
+  }
+}
 
-            <!-- RESERVATIONS LIST -->
-            <div style="margin-top: 30px;">
-                <h3 id="reservations-title">Reservations</h3>
-                <table id="reservations-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Room</th>
-                            <th>Date & Time</th>
-                            <th>User</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+function createApp(db) {
+  const app = express();
+  app.use(express.json());
+  app.use("/auth", createAuthRouter());
+  app.use("/v1/rooms", requireAuth, createRoomRouter(db));
+  app.use("/v1/reservations", requireAuth, createReservationRouter(db));
+  app.use(express.static(path.join(__dirname, '../public')));
 
-    <script>
-        let currentUser = null;
+  // healthpoint
+  app.get("/health", (_req, res) => {
+    res.status(200).json({
+      status: "ok"
+    });
+  });
 
-        async function apiFetch(url, options = {}) {
-            const response = await fetch(url, { credentials: 'same-origin', ...options });
-            if (!response.ok) {
-                const error = new Error(`Request failed with HTTP ${response.status}`);
-                error.status = response.status;
-                throw error;
-            }
-            return response.status === 204 ? null : response.json();
-        }
+  app.use((err, req, res, next) => {
+    console.error(err);
 
-        async function handleLogin(e) {
-            e.preventDefault();
-            const usernameInput = document.getElementById('username').value.trim();
-            const passwordInput = document.getElementById('password').value;
-            const errorDiv = document.getElementById('login-error');
-            errorDiv.classList.add('hidden');
-            try {
-                currentUser = await apiFetch('/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: usernameInput, password: passwordInput })
-                });
-            } catch (err) {
-                currentUser = null;
-                errorDiv.textContent = err.status === 401
-                    ? 'Invalid username or password. Please try again.'
-                    : 'Login is unavailable right now. Please try again later.';
-                errorDiv.classList.remove('hidden');
-                return;
-            }
+    if (res.headersSent) {
+      return next(err);
+    }
 
-            document.getElementById('user-display-name').innerText = currentUser.name;
-            const badge = document.getElementById('role-badge');
-            badge.innerText = currentUser.role.toUpperCase();
-            badge.className = `badge badge-${currentUser.role}`;
+    if (err.type === "entity.parse.failed" || err.status === 400) {
+      return sendProblem(res, {
+        status: 400,
+        type: "https://api.example.com/problems/malformed-request",
+        title: "The request could not be parsed",
+        detail: "The JSON body contained invalid syntax.",
+        instance: req.originalUrl
+      });
+    }
 
-            document.getElementById('login-section').classList.add('hidden');
-            document.getElementById('dashboard-section').classList.remove('hidden');
+    sendProblem(res, {
+      status: 500,
+      type: "https://api.example.com/problems/internal-error",
+      title: "Internal server error",
+      detail: "An unexpected error occurred.",
+      instance: req.originalUrl
+    });
+  });
 
-            if (currentUser.role === 'admin') {
-                document.getElementById('admin-view').classList.remove('hidden');
-                document.getElementById('reservations-title').innerText = 'All Reservations (Admin View)';
-            } else {
-                document.getElementById('admin-view').classList.add('hidden');
-                document.getElementById('reservations-title').innerText = 'My Reservations';
-            }
+  return app;
+}
 
-            await loadData();
-        }
+requiredConfig();
 
-        async function handleLogout() {
-            try { await apiFetch('/auth/logout', { method: 'POST' }); } catch (err) { console.error('Logout failed:', err); }
-            currentUser = null;
-            document.getElementById('login-section').classList.remove('hidden');
-            document.getElementById('dashboard-section').classList.add('hidden');
-            document.getElementById('login-form').reset();
-            document.getElementById('login-error').classList.add('hidden');
-        }
+const db = mysql.createPool({
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT),
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  waitForConnections: true,
+  connectionLimit: 10,
+  ssl: process.env.DB_SSL_CA
+    ? { ca: fs.readFileSync(process.env.DB_SSL_CA), rejectUnauthorized: true }
+    : undefined
+});
 
-        async function loadData() {
-            const roomsError = document.getElementById('rooms-error');
-            roomsError.classList.add('hidden');
-            try {
-                // Fetch Rooms
-                const roomsResponse = await apiFetch('/v1/rooms');
-                const rooms = Array.isArray(roomsResponse) ? roomsResponse : roomsResponse.items;
-                if (!Array.isArray(rooms)) throw new Error('The rooms service returned an unexpected response.');
-                const roomsTbody = document.querySelector('#rooms-table tbody');
-                roomsTbody.innerHTML = '';
-                
-                rooms.forEach(room => {
-                    const isAvailable = room.room_status === 'available';
-                    const statusBadge = isAvailable 
-                        ? `<span class="badge badge-available">Available</span>` 
-                        : `<span class="badge badge-unavailable">Unavailable</span>`;
+const app = createApp(db);
 
-                    let actionButton = '';
-                    if (currentUser.role === 'admin') {
-                        const toggleText = isAvailable ? 'Make Unavailable' : 'Make Available';
-                        const toggleClass = isAvailable ? 'btn-warning' : '';
-                        actionButton = `<button class="${toggleClass}" onclick="toggleRoomStatus('${room.id}', ${isAvailable})">${toggleText}</button>`;
-                    } else {
-                        if (isAvailable) {
-                            actionButton = `<button onclick="bookRoom('${room.id}')">Book Room</button>`;
-                        } else {
-                            actionButton = `<span style="color: #94a3b8; font-size: 14px;">Closed</span>`;
-                        }
-                    }
+// Runs only when starting locally with `npm start`.
+if (require.main === module) {
+  const port = Number(process.env.PORT || 8080);
 
-                    roomsTbody.innerHTML += `
-                        <tr>
-                            <td>${room.roomNumber || room.name || room.room_name || 'Room ' + room.id}</td>
-                            <td>${room.capacity || 'N/A'}</td>
-                            <td>${statusBadge}</td>
-                            <td>${actionButton}</td>
-                        </tr>
-                    `;
-                });
+  app.listen(port, () => {
+    console.log(`RoomReservation API listening on port ${port}`);
+  });
+}
 
-                // Fetch Reservations
-                let reservations = await apiFetch('/v1/reservations');
+// This is what Vercel imports and runs.
+module.exports = app;
 
-                // If regular user, filter only their reservations
-                if (currentUser.role === 'user') {
-                    reservations = reservations.filter(res => res.userEmail === currentUser.email || res.user === currentUser.email || !res.userEmail);
-                }
-
-                const resTbody = document.querySelector('#reservations-table tbody');
-                resTbody.innerHTML = '';
-                
-                reservations.forEach(res => {
-                    const resId = res.id;
-                    const roomId = res.roomId || res.room_id;
-                    const dateTime = res.dateTime || res.date || 'Scheduled Time';
-                    const userEmail = res.userEmail || res.user || currentUser.email;
-
-                    resTbody.innerHTML += `
-                        <tr>
-                            <td>${resId}</td>
-                            <td>${roomId}</td>
-                            <td>${dateTime}</td>
-                            <td>${userEmail}</td>
-                            <td><button class="btn-danger" onclick="cancelReservation('${resId}')">Cancel</button></td>
-                        </tr>
-                    `;
-                });
-            } catch (err) {
-                console.error("Error loading data:", err);
-                roomsError.textContent = err.status === 500
-                    ? 'Rooms could not be loaded (HTTP 500). The rooms service or its database is reporting a server error. Please try again later.'
-                    : err.status === 401
-                        ? 'Your login has expired. Please log in again.'
-                        : `Could not load room and reservation data${err.status ? ` (HTTP ${err.status})` : ''}. Please try again later.`;
-                roomsError.classList.remove('hidden');
-                if (err.status === 401) handleLogout();
-            }
-        }
-
-        async function createRoom(e) {
-            e.preventDefault();
-            const name = document.getElementById('room-name').value;
-            const capacity = document.getElementById('room-capacity').value;
-
-            await apiFetch('/v1/rooms', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, capacity: parseInt(capacity), isAvailable: true })
-            });
-
-            document.getElementById('room-form').reset();
-            loadData();
-        }
-
-        async function toggleRoomStatus(roomId, currentAvailability) {
-            const newStatus = !currentAvailability;
-            await apiFetch(`/v1/rooms/${roomId}/status`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus ? 'available' : 'maintenance' })
-            });
-            loadData();
-        }
-
-        async function bookRoom(roomId) {
-            const dateTime = prompt("Enter reservation date and time (YYYY-MM-DD HH:MM):", "2026-06-01 10:00");
-            if (!dateTime) return;
-
-            await fetch('/reservations', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomId, dateTime, userEmail: currentUser.email })
-            });
-
-            loadData();
-            alert("Reservation created successfully!");
-        }
-
-        async function cancelReservation(reservationId) {
-            if (!confirm("Are you sure you want to cancel this reservation?")) return;
-
-            await fetch(`/reservations/${reservationId}`, {
-                method: 'DELETE'
-            });
-
-            loadData();
-            alert("Reservation cancelled successfully!");
-        }
-    </script>
-</body>
-</html>
+// Keeps the existing helper exports available for any tests.
+module.exports.createApp = createApp;
+module.exports.requiredConfig = requiredConfig;

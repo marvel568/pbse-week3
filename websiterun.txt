@@ -13,5 +13,5 @@
    (or run: npm run dev)
 
 4. Open your web browser and navigate to:
-   http://localhost:3000
+   http://localhost:8080
 ========================================

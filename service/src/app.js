@@ -77,7 +77,8 @@ const db = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   ssl: process.env.DB_SSL_CA
-    ? { ca: fs.readFileSync(process.env.DB_SSL_CA), rejectUnauthorized: true }
+    ? { ca: process.env.DB_SSL_CA, rejectUnauthorized: true }
+    //? { ca: fs.readFileSync(process.env.DB_SSL_CA), rejectUnauthorized: true }
     : undefined
 });
 

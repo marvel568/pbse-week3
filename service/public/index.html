@@ -58,12 +58,15 @@
             font-weight: 500;
         }
         button:hover { background-color: var(--primary-hover); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-danger { background-color: #ef4444; }
         .btn-danger:hover { background-color: #dc2626; }
         .btn-warning { background-color: #d97706; }
         .btn-warning:hover { background-color: #b45309; }
         .hidden { display: none !important; }
         .error-msg { color: #ef4444; font-size: 14px; margin-top: 10px; font-weight: 500; }
+        .success-msg { color: #166534; font-size: 14px; margin-top: 10px; font-weight: 500; }
+        .empty-row { color: #94a3b8; text-align: center; }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -96,11 +99,11 @@
             <p>Please enter your authorized login details:</p>
             <form id="login-form" onsubmit="handleLogin(event)">
                 <div class="form-group">
-                    <label>Email / Username</label>
-                    <input type="text" id="username" required placeholder="admin@example.com or user@example.com">
+                    <label for="username">Email / Username</label>
+                    <input type="text" id="username" required placeholder="you@example.com">
                 </div>
                 <div class="form-group">
-                    <label>Password</label>
+                    <label for="password">Password</label>
                     <input type="password" id="password" required placeholder="••••••••">
                 </div>
                 <button type="submit">Log In</button>
@@ -123,11 +126,11 @@
                 <h3>Admin Panel: Manage Rooms</h3>
                 <form id="room-form" onsubmit="createRoom(event)" style="margin-bottom: 20px;">
                     <div class="form-group">
-                        <label>Room Name / Number</label>
+                        <label for="room-name">Room Name / Number</label>
                         <input type="text" id="room-name" required placeholder="e.g., Conference Room A">
                     </div>
                     <div class="form-group">
-                        <label>Capacity</label>
+                        <label for="room-capacity">Capacity</label>
                         <input type="number" id="room-capacity" required placeholder="e.g., 10">
                     </div>
                     <button type="submit">Add New Room</button>
@@ -154,6 +157,7 @@
             <!-- RESERVATIONS LIST -->
             <div style="margin-top: 30px;">
                 <h3 id="reservations-title">Reservations</h3>
+                <div id="reservations-status" class="hidden" role="status"></div>
                 <table id="reservations-table">
                     <thead>
                         <tr>
@@ -172,6 +176,22 @@
 
     <script>
         let currentUser = null;
+        let roomNamesById = {};
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function toList(response) {
+            if (Array.isArray(response)) return response;
+            if (response && Array.isArray(response.items)) return response.items;
+            return null;
+        }
 
         async function apiFetch(url, options = {}) {
             const response = await fetch(url, { credentials: 'same-origin', ...options });
@@ -180,7 +200,19 @@
                 error.status = response.status;
                 throw error;
             }
-            return response.status === 204 ? null : response.json();
+            if (response.status === 204) return null;
+            const text = await response.text();
+            return text ? JSON.parse(text) : null;
+        }
+
+        function showReservationStatus(message, isError) {
+            const box = document.getElementById('reservations-status');
+            box.textContent = message;
+            box.className = isError ? 'error-msg' : 'success-msg';
+        }
+
+        function clearReservationStatus() {
+            document.getElementById('reservations-status').className = 'hidden';
         }
 
         async function handleLogin(e) {
@@ -226,37 +258,50 @@
         async function handleLogout() {
             try { await apiFetch('/auth/logout', { method: 'POST' }); } catch (err) { console.error('Logout failed:', err); }
             currentUser = null;
+            roomNamesById = {};
             document.getElementById('login-section').classList.remove('hidden');
             document.getElementById('dashboard-section').classList.add('hidden');
             document.getElementById('login-form').reset();
             document.getElementById('login-error').classList.add('hidden');
+            clearReservationStatus();
         }
 
         async function loadData() {
+            await loadRooms();
+            await loadReservations();
+        }
+
+        async function loadRooms() {
             const roomsError = document.getElementById('rooms-error');
             roomsError.classList.add('hidden');
             try {
-                // Fetch Rooms
-                const roomsResponse = await apiFetch('/v1/rooms');
-                const rooms = Array.isArray(roomsResponse) ? roomsResponse : roomsResponse.items;
-                if (!Array.isArray(rooms)) throw new Error('The rooms service returned an unexpected response.');
+                const rooms = toList(await apiFetch('/v1/rooms'));
+                if (!rooms) throw new Error('The rooms service returned an unexpected response.');
                 const roomsTbody = document.querySelector('#rooms-table tbody');
                 roomsTbody.innerHTML = '';
-                
+                roomNamesById = {};
+
+                if (rooms.length === 0) {
+                    roomsTbody.innerHTML = '<tr><td colspan="4" class="empty-row">No rooms yet.</td></tr>';
+                }
+
                 rooms.forEach(room => {
+                    const roomName = room.roomNumber || room.name || room.room_name || 'Room ' + room.id;
+                    roomNamesById[String(room.id)] = roomName;
+
                     const isAvailable = room.room_status === 'available';
-                    const statusBadge = isAvailable 
-                        ? `<span class="badge badge-available">Available</span>` 
+                    const statusBadge = isAvailable
+                        ? `<span class="badge badge-available">Available</span>`
                         : `<span class="badge badge-unavailable">Unavailable</span>`;
 
                     let actionButton = '';
                     if (currentUser.role === 'admin') {
                         const toggleText = isAvailable ? 'Make Unavailable' : 'Make Available';
                         const toggleClass = isAvailable ? 'btn-warning' : '';
-                        actionButton = `<button class="${toggleClass}" onclick="toggleRoomStatus('${room.id}', ${isAvailable})">${toggleText}</button>`;
+                        actionButton = `<button class="${toggleClass}" onclick="toggleRoomStatus('${escapeHtml(room.id)}', ${isAvailable})">${toggleText}</button>`;
                     } else {
                         if (isAvailable) {
-                            actionButton = `<button onclick="bookRoom('${room.id}')">Book Room</button>`;
+                            actionButton = `<button data-action="book" data-id="${escapeHtml(room.id)}">Book Room</button>`;
                         } else {
                             actionButton = `<span style="color: #94a3b8; font-size: 14px;">Closed</span>`;
                         }
@@ -264,50 +309,74 @@
 
                     roomsTbody.innerHTML += `
                         <tr>
-                            <td>${room.roomNumber || room.name || room.room_name || 'Room ' + room.id}</td>
-                            <td>${room.capacity || 'N/A'}</td>
+                            <td>${escapeHtml(roomName)}</td>
+                            <td>${escapeHtml(room.capacity || 'N/A')}</td>
                             <td>${statusBadge}</td>
                             <td>${actionButton}</td>
                         </tr>
                     `;
                 });
+            } catch (err) {
+                console.error("Error loading rooms:", err);
+                roomsError.textContent = err.status === 500
+                    ? 'Rooms could not be loaded (HTTP 500). The rooms service or its database is reporting a server error. Please try again later.'
+                    : err.status === 401
+                        ? 'Your login has expired. Please log in again.'
+                        : `Could not load room data${err.status ? ` (HTTP ${err.status})` : ''}. Please try again later.`;
+                roomsError.classList.remove('hidden');
+                if (err.status === 401) handleLogout();
+            }
+        }
 
-                // Fetch Reservations
-                let reservations = await apiFetch('/v1/reservations');
+        async function loadReservations() {
+            const resTbody = document.querySelector('#reservations-table tbody');
+            try {
+                let reservations = toList(await apiFetch('/v1/reservations'));
+                if (!reservations) throw new Error('The reservations service returned an unexpected response.');
 
-                // If regular user, filter only their reservations
+                // Regular users only see their own reservations.
+                // (The server should enforce this too; this is a display filter only.)
                 if (currentUser.role === 'user') {
-                    reservations = reservations.filter(res => res.userEmail === currentUser.email || res.user === currentUser.email || !res.userEmail);
+                    reservations = reservations.filter(res => {
+                        const owner = res.userEmail || res.user;
+                        return !owner || owner === currentUser.email;
+                    });
                 }
 
-                const resTbody = document.querySelector('#reservations-table tbody');
                 resTbody.innerHTML = '';
-                
+
+                if (reservations.length === 0) {
+                    resTbody.innerHTML = '<tr><td colspan="5" class="empty-row">No reservations yet.</td></tr>';
+                    return;
+                }
+
                 reservations.forEach(res => {
-                    const resId = res.id;
                     const roomId = res.roomId || res.room_id;
+                    const roomLabel = roomNamesById[String(roomId)] || roomId;
                     const dateTime = res.dateTime || res.date || 'Scheduled Time';
                     const userEmail = res.userEmail || res.user || currentUser.email;
 
                     resTbody.innerHTML += `
                         <tr>
-                            <td>${resId}</td>
-                            <td>${roomId}</td>
-                            <td>${dateTime}</td>
-                            <td>${userEmail}</td>
-                            <td><button class="btn-danger" onclick="cancelReservation('${resId}')">Cancel</button></td>
+                            <td>${escapeHtml(res.id)}</td>
+                            <td>${escapeHtml(roomLabel)}</td>
+                            <td>${escapeHtml(dateTime)}</td>
+                            <td>${escapeHtml(userEmail)}</td>
+                            <td><button class="btn-danger" data-action="cancel" data-id="${escapeHtml(res.id)}">Cancel</button></td>
                         </tr>
                     `;
                 });
             } catch (err) {
-                console.error("Error loading data:", err);
-                roomsError.textContent = err.status === 500
-                    ? 'Rooms could not be loaded (HTTP 500). The rooms service or its database is reporting a server error. Please try again later.'
-                    : err.status === 401
-                        ? 'Your login has expired. Please log in again.'
-                        : `Could not load room and reservation data${err.status ? ` (HTTP ${err.status})` : ''}. Please try again later.`;
-                roomsError.classList.remove('hidden');
-                if (err.status === 401) handleLogout();
+                console.error("Error loading reservations:", err);
+                resTbody.innerHTML = '';
+                if (err.status === 401) {
+                    handleLogout();
+                    return;
+                }
+                showReservationStatus(
+                    `Could not load reservations${err.status ? ` (HTTP ${err.status})` : ''}. Please try again later.`,
+                    true
+                );
             }
         }
 
@@ -336,30 +405,84 @@
             loadData();
         }
 
-        async function bookRoom(roomId) {
-            const dateTime = prompt("Enter reservation date and time (YYYY-MM-DD HH:MM):", "2026-06-01 10:00");
+        function defaultBookingTime() {
+            const d = new Date();
+            d.setDate(d.getDate() + 1);
+            d.setHours(10, 0, 0, 0);
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        async function bookRoom(roomId, button) {
+            const dateTime = prompt("Enter reservation date and time (YYYY-MM-DD HH:MM):", defaultBookingTime());
             if (!dateTime) return;
 
-            await fetch('/reservations', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomId, dateTime, userEmail: currentUser.email })
-            });
+            const trimmed = dateTime.trim();
+            if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(trimmed) || isNaN(new Date(trimmed.replace(' ', 'T')))) {
+                showReservationStatus('Invalid date/time. Use the format YYYY-MM-DD HH:MM.', true);
+                return;
+            }
+            if (new Date(trimmed.replace(' ', 'T')) < new Date()) {
+                showReservationStatus('That date and time is in the past. Please pick a future time.', true);
+                return;
+            }
 
-            loadData();
-            alert("Reservation created successfully!");
+            if (button) button.disabled = true;
+            clearReservationStatus();
+            try {
+                await apiFetch('/v1/reservations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId, dateTime: trimmed, userEmail: currentUser.email })
+                });
+                await loadData();
+                showReservationStatus('Reservation created successfully!', false);
+            } catch (err) {
+                console.error('Booking failed:', err);
+                if (err.status === 401) { handleLogout(); return; }
+                showReservationStatus(
+                    err.status === 409 ? 'That room is already booked for that time.'
+                    : err.status === 400 || err.status === 422 ? 'The server rejected the reservation details. Check the date and time.'
+                    : `Could not create the reservation${err.status ? ` (HTTP ${err.status})` : ''}. Please try again.`,
+                    true
+                );
+            } finally {
+                if (button) button.disabled = false;
+            }
         }
 
-        async function cancelReservation(reservationId) {
+        async function cancelReservation(reservationId, button) {
             if (!confirm("Are you sure you want to cancel this reservation?")) return;
 
-            await fetch(`/reservations/${reservationId}`, {
-                method: 'DELETE'
-            });
-
-            loadData();
-            alert("Reservation cancelled successfully!");
+            if (button) button.disabled = true;
+            clearReservationStatus();
+            try {
+                await apiFetch(`/v1/reservations/${encodeURIComponent(reservationId)}`, { method: 'DELETE' });
+                await loadData();
+                showReservationStatus('Reservation cancelled successfully!', false);
+            } catch (err) {
+                console.error('Cancel failed:', err);
+                if (err.status === 401) { handleLogout(); return; }
+                showReservationStatus(
+                    err.status === 404 ? 'That reservation no longer exists.'
+                    : err.status === 403 ? 'You are not allowed to cancel this reservation.'
+                    : `Could not cancel the reservation${err.status ? ` (HTTP ${err.status})` : ''}. Please try again.`,
+                    true
+                );
+                if (err.status === 404) loadData();
+            } finally {
+                if (button) button.disabled = false;
+            }
         }
+
+        // Handle Book / Cancel clicks without putting ids inside inline JS.
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+            const id = button.dataset.id;
+            if (button.dataset.action === 'book') bookRoom(id, button);
+            if (button.dataset.action === 'cancel') cancelReservation(id, button);
+        });
     </script>
 </body>
 </html>

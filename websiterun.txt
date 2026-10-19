@@ -8,13 +8,10 @@
 2. Install the necessary project dependencies:
    $ npm install
 
-3. Configure your database environment variables (copy .env.example to .env):
-   $ cp .env.example .env
-
-4. Start the backend web server:
+3. Start the backend web server:
    $ npm start
    (or run: npm run dev)
 
-5. Open your web browser and navigate to:
+4. Open your web browser and navigate to:
    http://localhost:3000
 ========================================

@@ -17,6 +17,4 @@
 
 5. Open your web browser and navigate to:
    http://localhost:3000
-
-6. Click "Fill Admin Credentials" or "Fill User Credentials" on the login screen to test the accounts!
 ========================================

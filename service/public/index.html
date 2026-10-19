@@ -104,7 +104,7 @@
                     <input type="password" id="password" required placeholder="••••••••">
                 </div>
                 <button type="submit">Log In</button>
-                <div id="login-error" class="error-msg hidden">Invalid credentials. Please check your username and password.</div>
+                <div id="login-error" class="error-msg hidden" role="alert"></div>
             </form>
         </div>
 
@@ -137,6 +137,7 @@
             <!-- ROOMS LIST -->
             <div style="margin-top: 20px;">
                 <h3>Rooms Directory</h3>
+                <div id="rooms-error" class="error-msg hidden" role="alert"></div>
                 <table id="rooms-table">
                     <thead>
                         <tr>
@@ -172,29 +173,37 @@
     <script>
         let currentUser = null;
 
-        function handleLogin(e) {
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, { credentials: 'same-origin', ...options });
+            if (!response.ok) {
+                const error = new Error(`Request failed with HTTP ${response.status}`);
+                error.status = response.status;
+                throw error;
+            }
+            return response.status === 204 ? null : response.json();
+        }
+
+        async function handleLogin(e) {
             e.preventDefault();
             const usernameInput = document.getElementById('username').value.trim();
-            const passwordInput = document.getElementById('password').value.trim();
+            const passwordInput = document.getElementById('password').value;
             const errorDiv = document.getElementById('login-error');
-
-            // Secure credential check layer
-            const validAdminUser = "admin@example.com";
-            const validAdminPass = "adminpassword123";
-            
-            const validRegularUser = "user@example.com";
-            const validRegularPass = "userpassword123";
-
-            if (usernameInput === validAdminUser && passwordInput === validAdminPass) {
-                currentUser = { name: 'Admin User', role: 'admin', email: usernameInput };
-            } else if (usernameInput === validRegularUser && passwordInput === validRegularPass) {
-                currentUser = { name: 'Regular User', role: 'user', email: usernameInput };
-            } else {
+            errorDiv.classList.add('hidden');
+            try {
+                currentUser = await apiFetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: usernameInput, password: passwordInput })
+                });
+            } catch (err) {
+                currentUser = null;
+                errorDiv.textContent = err.status === 401
+                    ? 'Invalid username or password. Please try again.'
+                    : 'Login is unavailable right now. Please try again later.';
                 errorDiv.classList.remove('hidden');
                 return;
             }
 
-            errorDiv.classList.add('hidden');
             document.getElementById('user-display-name').innerText = currentUser.name;
             const badge = document.getElementById('role-badge');
             badge.innerText = currentUser.role.toUpperCase();
@@ -211,10 +220,11 @@
                 document.getElementById('reservations-title').innerText = 'My Reservations';
             }
 
-            loadData();
+            await loadData();
         }
 
-        function handleLogout() {
+        async function handleLogout() {
+            try { await apiFetch('/auth/logout', { method: 'POST' }); } catch (err) { console.error('Logout failed:', err); }
             currentUser = null;
             document.getElementById('login-section').classList.remove('hidden');
             document.getElementById('dashboard-section').classList.add('hidden');
@@ -223,15 +233,18 @@
         }
 
         async function loadData() {
+            const roomsError = document.getElementById('rooms-error');
+            roomsError.classList.add('hidden');
             try {
                 // Fetch Rooms
-                const roomsRes = await fetch('/rooms');
-                const rooms = await roomsRes.json();
+                const roomsResponse = await apiFetch('/v1/rooms');
+                const rooms = Array.isArray(roomsResponse) ? roomsResponse : roomsResponse.items;
+                if (!Array.isArray(rooms)) throw new Error('The rooms service returned an unexpected response.');
                 const roomsTbody = document.querySelector('#rooms-table tbody');
                 roomsTbody.innerHTML = '';
                 
                 rooms.forEach(room => {
-                    const isAvailable = room.isAvailable !== false && room.status !== 'unavailable';
+                    const isAvailable = room.room_status === 'available';
                     const statusBadge = isAvailable 
                         ? `<span class="badge badge-available">Available</span>` 
                         : `<span class="badge badge-unavailable">Unavailable</span>`;
@@ -251,7 +264,7 @@
 
                     roomsTbody.innerHTML += `
                         <tr>
-                            <td>${room.name || room.room_name || 'Room ' + room.id}</td>
+                            <td>${room.roomNumber || room.name || room.room_name || 'Room ' + room.id}</td>
                             <td>${room.capacity || 'N/A'}</td>
                             <td>${statusBadge}</td>
                             <td>${actionButton}</td>
@@ -260,8 +273,7 @@
                 });
 
                 // Fetch Reservations
-                const resRes = await fetch('/reservations');
-                let reservations = await resRes.json();
+                let reservations = await apiFetch('/v1/reservations');
 
                 // If regular user, filter only their reservations
                 if (currentUser.role === 'user') {
@@ -289,6 +301,13 @@
                 });
             } catch (err) {
                 console.error("Error loading data:", err);
+                roomsError.textContent = err.status === 500
+                    ? 'Rooms could not be loaded (HTTP 500). The rooms service or its database is reporting a server error. Please try again later.'
+                    : err.status === 401
+                        ? 'Your login has expired. Please log in again.'
+                        : `Could not load room and reservation data${err.status ? ` (HTTP ${err.status})` : ''}. Please try again later.`;
+                roomsError.classList.remove('hidden');
+                if (err.status === 401) handleLogout();
             }
         }
 
@@ -297,7 +316,7 @@
             const name = document.getElementById('room-name').value;
             const capacity = document.getElementById('room-capacity').value;
 
-            await fetch('/rooms', {
+            await apiFetch('/v1/rooms', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, capacity: parseInt(capacity), isAvailable: true })
@@ -309,10 +328,10 @@
 
         async function toggleRoomStatus(roomId, currentAvailability) {
             const newStatus = !currentAvailability;
-            await fetch(`/rooms/${roomId}`, {
+            await apiFetch(`/v1/rooms/${roomId}/status`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isAvailable: newStatus })
+                body: JSON.stringify({ status: newStatus ? 'available' : 'maintenance' })
             });
             loadData();
         }

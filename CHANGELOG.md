@@ -2,6 +2,23 @@
 
 All notable changes to `openapi.yaml` are recorded here
 
+## [0.6.0] - 2026-11-28
+
+### Added
+- Added Auth0 OAuth 2.0 authentication to the RoomReservation API.
+- Added OAuth scopes for room and reservation operations.
+- Added 401 Unauthorized and 403 Forbidden responses to protected endpoints.
+- Added a public /health endpoint.
+
+### Changed
+- Protected room and reservation endpoints now require valid access tokens.
+- Added scope-based access control for API operations.
+- Documented reservation ownership and access restrictions.
+
+### Breaking Changes
+- Clients must now provide a valid Auth0 access token when accessing protected endpoints.
+- Clients must request the appropriate permissions (scopes) for each operation.
+
 ## 0.5.0
 
 ### Added

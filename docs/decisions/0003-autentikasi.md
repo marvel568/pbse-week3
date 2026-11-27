@@ -118,3 +118,4 @@ The current unauthenticated implementation remains temporarily available while
 the authentication middleware and tests are introduced. Once enforcement is
 added, the student and administrator permissions in this record become the
 source of truth for route-level access checks.
+

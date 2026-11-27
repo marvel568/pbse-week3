@@ -26,10 +26,13 @@ info:
     status value they do not know
 
 servers:
-  - url: https://api.example.com/v1
-    description: Production - does not exist yet. That is Meeting 3.
+  - url: https://pbse-week3-vercel.vercel.app/v1
+    description: Production
   - url: http://localhost:8080/v1
     description: Local development
+
+security:
+  - StudyRoomOAuth: []
 
 tags:
   - name: Rooms
@@ -44,9 +47,36 @@ paths:
   # Rule 2: removing a query parameter must give you MORE results of the
   # same kind, never a DIFFERENT kind of thing.
   # -------------------------------------------------------------------
+  /health:
+    get:
+      operationId: healthCheck
+      security: []
+      summary: Check API health
+      tags: [Health]
+      description: Returns the health status of the API.
+      servers:
+        - url: https://pbse-week3-vercel.vercel.app/v1
+          description: Production
+        - url: http://localhost:8080
+          description: Local development
+      responses:
+        '200':
+          description: API is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
   /rooms/{roomId}:
     get:
       operationId: getRoom
+      security:
+        - StudyRoomOAuth:
+            - rooms:read
       summary: Get a library study room
       tags: [Rooms]
       description: |
@@ -75,9 +105,19 @@ paths:
 
         '404':
           $ref: '#/components/responses/NotFound'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /rooms/{roomId}/status:
     put:
       operationId: updateRoomStatus
+      security:
+        - StudyRoomOAuth:
+            - rooms:manage
       summary: Update a room's operational status
       tags: [Rooms]
       description: |
@@ -105,10 +145,17 @@ paths:
               schema: { $ref: '#/components/schemas/Rooms' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /rooms:
     get:
       operationId: listRooms
+      security:
+        - StudyRoomOAuth:
+            - rooms:read
       summary: List rooms
       tags: [Rooms]
       description: |
@@ -152,6 +199,10 @@ paths:
                     description: Absent on the last page.
                     example: eyJvIjoyMH0
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
     # -----------------------------------------------------------------
     # The unsafe, consequential operation. Required for L2.
@@ -161,9 +212,12 @@ paths:
   /reservations:
     get:
       operationId: listReservations
+      security:
+        - StudyRoomOAuth:
+            - reservations:read
       summary: List room reservations
       tags: [Reservations]
-      description: Returns every existing room reservation.
+      description: Returns every existing room reservation visible to authenticated caller.
       responses:
         '200':
           description: All room reservations.
@@ -174,6 +228,9 @@ paths:
                 items: { $ref: '#/components/schemas/Reservation' }
     post:
       operationId: createReservation
+      security:
+        - StudyRoomOAuth:
+            - reservations:write
       summary: Reserve a library room
       tags: [Reservations]
       description: Creates a new room reservation.
@@ -202,13 +259,20 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /reservations/{reservationId}:
     get:
       operationId: getReservation
+      security:
+        - StudyRoomOAuth:
+            - reservations:read
       summary: Get a room reservation
       tags: [Reservations]
-      description: Returns one room reservation.
+      description: Returns one room reservation if authenticated caller is authorized.
       parameters:
         - name: reservationId
           in: path
@@ -226,12 +290,33 @@ paths:
               schema: { $ref: '#/components/schemas/Reservation' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
 
   # -------------------------------------------------------------------
   # Rule 5 — a state transition is a sub-resource, and its URI is a
   # NOUN. Not /markRetired, not PATCH {"status":"retired"}.
   # ------------------------------------------------------------------
 components:
+  securitySchemes:
+    StudyRoomOAuth:
+      type: oauth2
+      description: |
+        Auth0 OAuth 2.0 authentication.
+        Public clients MUST use Authorization Code with PKCE (S256).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://roomreservation-pbse.au.auth0.com/authorize
+          tokenUrl: https://roomreservation-pbse.au.auth0.com/oauth/token
+          scopes:
+            rooms:read: View study rooms and their status.
+            rooms:manage: Change a room's operational status.
+            reservations:read: Read reservations visible to the caller.
+            reservations:write: Create a reservation for oneself.
+            reservations:manage: Manage all students' reservations.
 
   schemas:
 
@@ -463,3 +548,17 @@ components:
             status: 422
             detail: The requested room capacity exceeds structural limits.
             instance: /v1/rooms
+
+    Unauthorized:
+      description: Missing, invalid, expired or incorrectly issued access token.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    Forbidden:
+      description: The authenticated user does not have the required permission.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

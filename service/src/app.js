@@ -12,7 +12,7 @@ const { createAuthRouter, requireAuth } = require("./auth");
 function requiredConfig() {
   const required = [
     "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER",
-    "AUTH_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "USER_EMAIL", "USER_PASSWORD"
+    "ADMIN_EMAIL", "ADMIN_PASSWORD", "USER_EMAIL", "USER_PASSWORD"
   ];
 
   for (const name of required) {

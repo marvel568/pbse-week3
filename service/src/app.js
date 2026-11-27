@@ -1,13 +1,19 @@
 require("dotenv").config();
+const path = require('path')
 
 const express = require("express");
 const mysql = require("mysql2/promise");
+const fs = require("fs");
 const { createRoomRouter } = require("./routes/rooms");
 const { createReservationRouter } = require("./routes/reservations");
 const { sendProblem } = require("./problem");
+const { createAuthRouter, requireAuth } = require("./auth");
 
 function requiredConfig() {
-  const required = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER"];
+  const required = [
+    "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER",
+    "AUTH_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "USER_EMAIL", "USER_PASSWORD"
+  ];
 
   for (const name of required) {
     if (!process.env[name]) {
@@ -18,8 +24,11 @@ function requiredConfig() {
 
 function createApp(db) {
   const app = express();
-
   app.use(express.json());
+  app.use("/auth", createAuthRouter());
+  app.use("/v1/rooms", requireAuth, createRoomRouter(db));
+  app.use("/v1/reservations", requireAuth, createReservationRouter(db));
+  app.use(express.static(path.join(__dirname, '../public')));
 
   // healthpoint
   app.get("/health", (_req, res) => {
@@ -27,9 +36,6 @@ function createApp(db) {
       status: "ok"
     });
   });
-
-  app.use("/v1/rooms", createRoomRouter(db));
-  app.use("/v1/reservations", createReservationRouter(db));
 
   app.use((err, req, res, next) => {
     console.error(err);
@@ -70,8 +76,9 @@ const db = mysql.createPool({
   password: process.env.DB_PASSWORD,
   waitForConnections: true,
   connectionLimit: 10,
-  ssl: process.env.DB_SSL_CA_PATH
-    ? { ca: fs.readFileSync(process.env.DB_SSL_CA_PATH), rejectUnauthorized: true }
+  ssl: process.env.DB_SSL_CA
+    ? { ca: process.env.DB_SSL_CA, rejectUnauthorized: true }
+    //? { ca: fs.readFileSync(process.env.DB_SSL_CA), rejectUnauthorized: true }
     : undefined
 });
 

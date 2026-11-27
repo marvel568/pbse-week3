@@ -1,0 +1,17 @@
+========================================
+ STEPS TO RUN THE WEBSITE
+========================================
+
+1. Open your terminal and navigate to the service folder:
+   $ cd service
+
+2. Install the necessary project dependencies:
+   $ npm install
+
+3. Start the backend web server:
+   $ npm start
+   (or run: npm run dev)
+
+4. Open your web browser and navigate to:
+   http://localhost:8080
+========================================
